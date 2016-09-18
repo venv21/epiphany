@@ -1721,7 +1721,8 @@ format_network_error_page (const char  *uri,
                            char       **button_label,
                            char       **button_action,
                            const char **button_accesskey,
-                           const char **icon_name)
+                           const char **icon_name,
+                           const char **style)
 {
   char *formatted_uri;
   char *formatted_reason;
@@ -1761,6 +1762,7 @@ format_network_error_page (const char  *uri,
   *button_accesskey = C_("reload-access-key", "R");
 
   *icon_name = "network-error-symbolic.png";
+  *style = "default";
 
   g_free (formatted_uri);
   g_free (formatted_reason);
@@ -1775,7 +1777,8 @@ format_crash_error_page (const char  *uri,
                          char       **button_label,
                          char       **button_action,
                          const char **button_accesskey,
-                         const char **icon_name)
+                         const char **icon_name,
+                         const char **style)
 {
   char *formatted_uri;
   char *formatted_distributor;
@@ -1812,6 +1815,7 @@ format_crash_error_page (const char  *uri,
   *button_accesskey = C_("reload-access-key", "R");
 
   *icon_name = "computer-fail-symbolic.png";
+  *style = "default";
 
   g_free (formatted_uri);
   g_free (formatted_distributor);
@@ -1827,7 +1831,8 @@ format_process_crash_error_page (const char  *uri,
                                  char       **button_label,
                                  char       **button_action,
                                  const char **button_accesskey,
-                                 const char **icon_name)
+                                 const char **icon_name,
+                                 const char **style)
 {
   const char *first_paragraph;
   const char *second_paragraph;
@@ -1853,6 +1858,7 @@ format_process_crash_error_page (const char  *uri,
   *button_accesskey = C_("reload-access-key", "R");
 
   *icon_name = "computer-fail-symbolic.png";
+  *style = "default";
 }
 
 static void
@@ -1868,7 +1874,8 @@ format_tls_error_page (EphyWebView *view,
                        char       **hidden_button_label,
                        char       **hidden_button_action,
                        const char **hidden_button_accesskey,
-                       const char **icon_name)
+                       const char **icon_name,
+                       const char **style)
 {
   char *formatted_hostname;
   char *first_paragraph;
@@ -1906,6 +1913,66 @@ format_tls_error_page (EphyWebView *view,
   *hidden_button_accesskey = C_("proceed-anyway-access-key", "P");
 
   *icon_name = "channel-insecure-symbolic.png";
+  *style = "danger";
+
+  g_free (formatted_hostname);
+  g_free (first_paragraph);
+}
+
+static void
+format_unsafe_browsing_error_page (EphyWebView *view,
+                                   const char  *hostname,
+                                   char       **page_title,
+                                   char       **message_title,
+                                   char       **message_body,
+                                   char       **message_details,
+                                   char       **button_label,
+                                   char       **button_action,
+                                   const char **button_accesskey,
+                                   char       **hidden_button_label,
+                                   char       **hidden_button_action,
+                                   const char **hidden_button_accesskey,
+                                   const char **icon_name,
+                                   const char **style)
+{
+  char *formatted_hostname;
+  char *first_paragraph;
+
+  /* Page title when a site is flagged by  */
+  *page_title = g_strdup_printf (_("Security Warning"));
+
+  /* Message title on the safe browsing error page. */
+  *message_title = g_strdup (_("Unsafe website detected!"));
+
+  formatted_hostname = g_strdup_printf ("<strong>%s</strong>", hostname);
+  /* Error details on the safe browsing error page. */
+  first_paragraph = g_strdup_printf (_("%s is reported to be unsafe. It might "
+                                       "trick you by pretending to be a "
+                                       "different website to steal your "
+                                       "information, or it might harm "
+                                       "your computer by installing malicious "
+                                       "software."), /* FIXME: be more accurate */
+                                     formatted_hostname);
+
+  *message_body = g_strdup_printf ("<p>%s</p>", first_paragraph);
+  *message_details = g_strdup (""); /* FIXME */
+
+  /* The button on safe browsing error page. DO NOT ADD MNEMONICS HERE. */
+  *button_label = g_strdup (_("Go Back"));
+  *button_action = g_strdup ("window.history.back();");
+  /* Mnemonic for the Go Back button on the safe browsing error page. */
+  *button_accesskey = C_("back-access-key", "B");
+
+  /* The hidden button on the safe browsing error page. Do not add mnemonics here. */
+  *hidden_button_label = g_strdup (_("Accept Risk and Proceed"));
+// FIXME tlsErrorPage needs renamed!
+  *hidden_button_action = g_strdup_printf ("window.webkit.messageHandlers.tlsErrorPage.postMessage(%"G_GUINT64_FORMAT ");",
+                                          webkit_web_view_get_page_id (WEBKIT_WEB_VIEW (view)));
+  /* Mnemonic for the Accept Risk and Proceed button on the safe browsing error page. */
+  *hidden_button_accesskey = C_("proceed-anyway-access-key", "P");
+
+  *icon_name = "security-high-symbolic.png";
+  *style = "danger";
 
   g_free (formatted_hostname);
   g_free (first_paragraph);
@@ -1942,6 +2009,7 @@ ephy_web_view_load_error_page (EphyWebView         *view,
   const char *button_accesskey = NULL;
   const char *hidden_button_accesskey = NULL;
   const char *icon_name = NULL;
+  const char *style = NULL;
   const char *reason = NULL;
 
   g_return_if_fail (page != EPHY_WEB_VIEW_ERROR_PAGE_NONE);
@@ -1976,7 +2044,8 @@ ephy_web_view_load_error_page (EphyWebView         *view,
                                  &button_label,
                                  &button_action,
                                  &button_accesskey,
-                                 &icon_name);
+                                 &icon_name,
+                                 &style);
       break;
     case EPHY_WEB_VIEW_ERROR_PAGE_CRASH:
       format_crash_error_page (uri,
@@ -1986,7 +2055,8 @@ ephy_web_view_load_error_page (EphyWebView         *view,
                                &button_label,
                                &button_action,
                                &button_accesskey,
-                               &icon_name);
+                               &icon_name,
+                               &style);
       break;
     case EPHY_WEB_VIEW_ERROR_PROCESS_CRASH:
       format_process_crash_error_page (uri,
@@ -1996,7 +2066,8 @@ ephy_web_view_load_error_page (EphyWebView         *view,
                                        &button_label,
                                        &button_action,
                                        &button_accesskey,
-                                       &icon_name);
+                                       &icon_name,
+                                       &style);
       break;
     case EPHY_WEB_VIEW_ERROR_INVALID_TLS_CERTIFICATE:
       format_tls_error_page (view,
@@ -2011,8 +2082,26 @@ ephy_web_view_load_error_page (EphyWebView         *view,
                              &hidden_button_label,
                              &hidden_button_action,
                              &hidden_button_accesskey,
-                             &icon_name);
+                             &icon_name,
+                             &style);
       break;
+    case EPHY_WEB_VIEW_ERROR_UNSAFE_BROWSING:
+      format_unsafe_browsing_error_page (view,
+                                         hostname,
+                                         &page_title,
+                                         &msg_title,
+                                         &msg_body,
+                                         &msg_details,
+                                         &button_label,
+                                         &button_action,
+                                         &button_accesskey,
+                                         &hidden_button_label,
+                                         &hidden_button_action,
+                                         &hidden_button_accesskey,
+                                         &icon_name,
+                                         &style);
+      break;
+
     case EPHY_WEB_VIEW_ERROR_PAGE_NONE:
     default:
       g_assert_not_reached ();
@@ -2031,7 +2120,7 @@ ephy_web_view_load_error_page (EphyWebView         *view,
                    get_style_sheet (),
                    button_action, hidden_button_action,
                    icon_name,
-                   page == EPHY_WEB_VIEW_ERROR_INVALID_TLS_CERTIFICATE ? "danger" : "default",
+                   style,
                    msg_title, msg_body,
                    msg_details ? "visible" : "hidden",
                    _("Technical information"),
