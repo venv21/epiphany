@@ -169,7 +169,10 @@ RESOURCE_FILES = \
 	resources/incognito.png				\
 	resources/mime-types-permissions.xml		\
 	resources/missing-thumbnail.png			\
-	resources/network-error-symbolic.png
+	resources/network-error-symbolic.png		\
+	resources/prism.css				\
+	resources/prism.js
+
 
 epiphany-resources.c: resources/epiphany.gresource.xml $(RESOURCE_FILES)
 	$(AM_V_GEN) glib-compile-resources --target=$@ --sourcedir=$(srcdir)/resources --generate-source --c-name epiphany $(srcdir)/resources/epiphany.gresource.xml

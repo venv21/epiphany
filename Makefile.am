@@ -3,6 +3,10 @@ if ENABLE_TESTS
 SUBDIRS += tests
 endif
 
+EXTRA_DIST = \
+	LICENSE.chromium	\
+	LICENSE.prism
+
 AM_DISTCHECK_CONFIGURE_FLAGS = \
 	--enable-appstream-util	\
 	--enable-debug
