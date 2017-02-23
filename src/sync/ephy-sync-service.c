@@ -38,8 +38,9 @@
 #define MOZILLA_TOKEN_SERVER_URL  "https://token.services.mozilla.com/1.0/sync/1.5"
 #define MOZILLA_FXA_SERVER_URL    "https://api.accounts.firefox.com/v1/"
 #define EPHY_BOOKMARKS_COLLECTION "ephy-bookmarks"
-#define SYNC_FREQUENCY            (15 * 60) /* seconds */
+#define SYNC_FREQUENCY            (15 * 60)        /* seconds */
 #define CERTIFICATE_DURATION      (60 * 60 * 1000) /* milliseconds, limited to 24 hours */
+#define ASSERTION_DURATION        (5 * 60)         /* seconds */
 
 struct _EphySyncService {
   GObject      parent_instance;
@@ -425,7 +426,8 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self,
   g_return_if_fail (self->keypair != NULL);
 
   audience = ephy_sync_utils_make_audience (MOZILLA_TOKEN_SERVER_URL);
-  assertion = ephy_sync_crypto_create_assertion (self->certificate, audience, 300, self->keypair);
+  assertion = ephy_sync_crypto_create_assertion (self->certificate, audience,
+                                                 ASSERTION_DURATION, self->keypair);
   g_return_if_fail (assertion != NULL);
 
   kB = ephy_sync_crypto_decode_hex (self->kB);
