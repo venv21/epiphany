@@ -39,6 +39,10 @@
 #define MOZILLA_FXA_SERVER_URL    "https://api.accounts.firefox.com/v1/"
 #define EPHY_BOOKMARKS_COLLECTION "ephy-bookmarks"
 #define SYNC_FREQUENCY            (15 * 60) /* seconds */
+/* The lifetime of the certificate in milliseconds. The Firefox Accounts server
+ * limits the duration to 24 hours. For our purposes, a duration of 30 minutes
+ * will suffice. */
+#define CERTIFICATE_DURATION      (30 * 60 * 1000)
 
 struct _EphySyncService {
   GObject      parent_instance;
@@ -541,11 +545,8 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self,
   n = mpz_get_str (NULL, 10, self->keypair->public.n);
   e = mpz_get_str (NULL, 10, self->keypair->public.e);
   public_key_json = ephy_sync_utils_build_json_string ("algorithm", "RS", "n", n, "e", e, NULL);
-  /* Duration is the lifetime of the certificate in milliseconds. The FxA server
-   * limits the duration to 24 hours. For our purposes, a duration of 30 minutes
-   * will suffice. */
   request_body = g_strdup_printf ("{\"publicKey\": %s, \"duration\": %d}",
-                                  public_key_json, 30 * 60 * 1000);
+                                  public_key_json, CERTIFICATE_DURATION);
   ephy_sync_service_fxa_hawk_post_async (self, "certificate/sign", tokenID_hex,
                                          reqHMACkey, EPHY_SYNC_TOKEN_LENGTH, request_body,
                                          obtain_signed_certificate_response_cb, user_data);
