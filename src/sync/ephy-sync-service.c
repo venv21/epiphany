@@ -39,10 +39,7 @@
 #define MOZILLA_FXA_SERVER_URL    "https://api.accounts.firefox.com/v1/"
 #define EPHY_BOOKMARKS_COLLECTION "ephy-bookmarks"
 #define SYNC_FREQUENCY            (15 * 60) /* seconds */
-/* The lifetime of the certificate in milliseconds. The Firefox Accounts server
- * limits the duration to 24 hours. For our purposes, a duration of 30 minutes
- * will suffice. */
-#define CERTIFICATE_DURATION      (30 * 60 * 1000)
+#define CERTIFICATE_DURATION      (60 * 60 * 1000) /* milliseconds, limited to 24 hours */
 
 struct _EphySyncService {
   GObject      parent_instance;
