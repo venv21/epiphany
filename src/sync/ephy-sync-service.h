@@ -69,7 +69,6 @@ void             ephy_sync_service_send_storage_message         (EphySyncService
                                                                  double               unmodified_since,
                                                                  SoupSessionCallback  callback,
                                                                  gpointer             user_data);
-void             ephy_sync_service_release_next_storage_message (EphySyncService *self);
 void             ephy_sync_service_upload_bookmark              (EphySyncService *self,
                                                                  EphyBookmark    *bookmark,
                                                                  gboolean         force);

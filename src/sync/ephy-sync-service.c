@@ -584,6 +584,21 @@ ephy_sync_service_issue_storage_request (EphySyncService               *self,
 }
 
 static void
+ephy_sync_service_release_next_storage_message (EphySyncService *self)
+{
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  /* We should never reach this with the service not being locked. */
+  g_assert (self->locked == TRUE);
+
+  /* If there are other messages waiting in the queue, we release the next one
+   * and keep the service locked, else, we mark the service as not locked. */
+  if (g_queue_is_empty (self->storage_queue) == FALSE)
+    ephy_sync_service_issue_storage_request (self, g_queue_pop_head (self->storage_queue));
+  else
+    self->locked = FALSE;
+}
+
+static void
 ephy_sync_service_finalize (GObject *object)
 {
   EphySyncService *self = EPHY_SYNC_SERVICE (object);
@@ -966,21 +981,6 @@ ephy_sync_service_send_storage_message (EphySyncService     *self,
   } else {
     g_queue_push_tail (self->storage_queue, data);
   }
-}
-
-void
-ephy_sync_service_release_next_storage_message (EphySyncService *self)
-{
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  /* We should never reach this with the service not being locked. */
-  g_assert (self->locked == TRUE);
-
-  /* If there are other messages waiting in the queue, we release the next one
-   * and keep the service locked, else, we mark the service as not locked. */
-  if (g_queue_is_empty (self->storage_queue) == FALSE)
-    ephy_sync_service_issue_storage_request (self, g_queue_pop_head (self->storage_queue));
-  else
-    self->locked = FALSE;
 }
 
 static void
