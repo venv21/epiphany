@@ -616,7 +616,9 @@ ephy_sync_service_dispose (GObject *object)
 {
   EphySyncService *self = EPHY_SYNC_SERVICE (object);
 
-  ephy_sync_service_stop_periodical_sync (self);
+  if (ephy_sync_service_is_signed_in (self))
+    ephy_sync_service_stop_periodical_sync (self);
+
   ephy_sync_service_clear_storage_credentials (self);
   ephy_sync_service_clear_tokens (self);
   g_clear_pointer (&self->user_email, g_free);
@@ -1156,10 +1158,8 @@ ephy_sync_service_delete_bookmark (EphySyncService *self,
   char *endpoint;
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (ephy_sync_service_is_signed_in (self));
   g_return_if_fail (EPHY_IS_BOOKMARK (bookmark));
-
-  if (ephy_sync_service_is_signed_in (self) == FALSE)
-    return;
 
   endpoint = g_strdup_printf ("storage/%s/%s",
                               EPHY_BOOKMARKS_COLLECTION,
@@ -1431,9 +1431,7 @@ ephy_sync_service_start_periodical_sync (EphySyncService *self,
                                          gboolean         now)
 {
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-
-  if (ephy_sync_service_is_signed_in (self) == FALSE)
-    return;
+  g_return_if_fail (ephy_sync_service_is_signed_in (self));
 
   if (now == TRUE)
     do_periodical_sync (self);
@@ -1445,9 +1443,7 @@ void
 ephy_sync_service_stop_periodical_sync (EphySyncService *self)
 {
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-
-  if (ephy_sync_service_is_signed_in (self) == FALSE)
-    return;
+  g_return_if_fail (ephy_sync_service_is_signed_in (self));
 
   if (self->source_id != 0) {
     g_source_remove (self->source_id);
