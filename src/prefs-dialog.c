@@ -317,8 +317,8 @@ poll_fxa_server (gpointer user_data)
                                       data->respHMACkey, data->respXORkey);
 
     g_free (bundle);
-    fxa_callback_data_free (data);
     data->dialog->fxa_id = 0;
+    fxa_callback_data_free (data);
 
     return G_SOURCE_REMOVE;
   }
