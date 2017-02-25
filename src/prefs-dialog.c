@@ -127,7 +127,7 @@ struct _PrefsDialog {
   WebKitWebView *fxa_web_view;
   WebKitUserContentManager *fxa_manager;
   WebKitUserScript *fxa_script;
-  guint fxa_id;
+  guint fxa_source_id;
 #endif
   GtkWidget *notebook;
 };
@@ -232,9 +232,9 @@ prefs_dialog_finalize (GObject *object)
     g_object_unref (dialog->fxa_manager);
   }
 
-  if (dialog->fxa_id != 0) {
-    g_source_remove (dialog->fxa_id);
-    dialog->fxa_id = 0;
+  if (dialog->fxa_source_id != 0) {
+    g_source_remove (dialog->fxa_source_id);
+    dialog->fxa_source_id = 0;
   }
 #endif
 
@@ -317,7 +317,7 @@ poll_fxa_server (gpointer user_data)
                                       data->respHMACkey, data->respXORkey);
 
     g_free (bundle);
-    data->dialog->fxa_id = 0;
+    data->dialog->fxa_source_id = 0;
     fxa_callback_data_free (data);
 
     return G_SOURCE_REMOVE;
@@ -441,7 +441,7 @@ server_message_received_cb (WebKitUserContentManager *manager,
       cb_data = fxa_callback_data_new (dialog, email, uid, sessionToken,
                                        keyFetchToken, unwrapBKey, tokenID,
                                        reqHMACkey, respHMACkey, respXORkey);
-      dialog->fxa_id = g_timeout_add_seconds (2, (GSourceFunc)poll_fxa_server, cb_data);
+      dialog->fxa_source_id = g_timeout_add_seconds (2, (GSourceFunc)poll_fxa_server, cb_data);
 
       g_free (text);
     } else {
