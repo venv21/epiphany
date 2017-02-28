@@ -89,9 +89,9 @@ typedef struct {
   double               unmodified_since;
   SoupSessionCallback  callback;
   gpointer             user_data;
-} StorageServerRequestAsyncData;
+} StorageRequestAsyncData;
 
-static StorageServerRequestAsyncData *
+static StorageRequestAsyncData *
 storage_server_request_async_data_new (EphySyncService     *service,
                                        char                *endpoint,
                                        const char          *method,
@@ -101,9 +101,9 @@ storage_server_request_async_data_new (EphySyncService     *service,
                                        SoupSessionCallback  callback,
                                        gpointer             user_data)
 {
-  StorageServerRequestAsyncData *data;
+  StorageRequestAsyncData *data;
 
-  data = g_slice_new (StorageServerRequestAsyncData);
+  data = g_slice_new (StorageRequestAsyncData);
   data->service = g_object_ref (service);
   data->endpoint = g_strdup (endpoint);
   data->method = method;
@@ -117,14 +117,14 @@ storage_server_request_async_data_new (EphySyncService     *service,
 }
 
 static void
-storage_server_request_async_data_free (StorageServerRequestAsyncData *data)
+storage_server_request_async_data_free (StorageRequestAsyncData *data)
 {
   g_assert (data != NULL);
 
   g_object_unref (data->service);
   g_free (data->endpoint);
   g_free (data->request_body);
-  g_slice_free (StorageServerRequestAsyncData, data);
+  g_slice_free (StorageRequestAsyncData, data);
 }
 
 static void
@@ -247,8 +247,8 @@ ephy_sync_service_fxa_hawk_get_sync (EphySyncService  *self,
 }
 
 static void
-ephy_sync_service_send_storage_request (EphySyncService               *self,
-                                        StorageServerRequestAsyncData *data)
+ephy_sync_service_send_storage_request (EphySyncService         *self,
+                                        StorageRequestAsyncData *data)
 {
   EphySyncCryptoHawkOptions *hoptions = NULL;
   EphySyncCryptoHawkHeader *hheader;
@@ -369,14 +369,14 @@ obtain_storage_credentials_response_cb (SoupSession *session,
                                         SoupMessage *msg,
                                         gpointer     user_data)
 {
-  StorageServerRequestAsyncData *data;
+  StorageRequestAsyncData *data;
   EphySyncService *service;
   JsonParser *parser;
   JsonObject *json;
   JsonObject *errors;
   JsonArray *array;
 
-  data = (StorageServerRequestAsyncData *)user_data;
+  data = (StorageRequestAsyncData *)user_data;
   service = EPHY_SYNC_SERVICE (data->service);
 
   parser = json_parser_new ();
@@ -455,13 +455,13 @@ obtain_signed_certificate_response_cb (SoupSession *session,
                                        SoupMessage *msg,
                                        gpointer     user_data)
 {
-  StorageServerRequestAsyncData *data;
+  StorageRequestAsyncData *data;
   EphySyncService *service;
   JsonParser *parser;
   JsonObject *json;
   const char *certificate;
 
-  data = (StorageServerRequestAsyncData *)user_data;
+  data = (StorageRequestAsyncData *)user_data;
   service = EPHY_SYNC_SERVICE (data->service);
 
   parser = json_parser_new ();
@@ -561,8 +561,8 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self,
 }
 
 static void
-ephy_sync_service_issue_storage_request (EphySyncService               *self,
-                                         StorageServerRequestAsyncData *data)
+ephy_sync_service_issue_storage_request (EphySyncService         *self,
+                                         StorageRequestAsyncData *data)
 {
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
   g_return_if_fail (data != NULL);
@@ -965,7 +965,7 @@ ephy_sync_service_send_storage_message (EphySyncService     *self,
                                         SoupSessionCallback  callback,
                                         gpointer             user_data)
 {
-  StorageServerRequestAsyncData *data;
+  StorageRequestAsyncData *data;
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
   g_return_if_fail (endpoint != NULL);
