@@ -288,9 +288,9 @@ out:
 }
 
 static void
-obtain_storage_credentials_response_cb (SoupSession *session,
-                                        SoupMessage *msg,
-                                        gpointer     user_data)
+obtain_storage_credentials_cb (SoupSession *session,
+                               SoupMessage *msg,
+                               gpointer     user_data)
 {
   EphySyncService *service;
   JsonParser *parser;
@@ -351,7 +351,7 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
    * recognize accounts that were previously used to sync Firefox data too. */
   soup_message_headers_append (msg->request_headers, "X-Client-State", client_state);
   soup_message_headers_append (msg->request_headers, "authorization", authorization);
-  soup_session_queue_message (self->session, msg, obtain_storage_credentials_response_cb, self);
+  soup_session_queue_message (self->session, msg, obtain_storage_credentials_cb, self);
 
   g_free (kB);
   g_free (hashed_kB);
@@ -362,9 +362,9 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
 }
 
 static void
-obtain_signed_certificate_response_cb (SoupSession *session,
-                                       SoupMessage *msg,
-                                       gpointer     user_data)
+obtain_signed_certificate_cb (SoupSession *session,
+                              SoupMessage *msg,
+                              gpointer     user_data)
 {
   EphySyncService *service;
   JsonParser *parser;
@@ -451,7 +451,7 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
                                   public_key_json, CERTIFICATE_DURATION);
   ephy_sync_service_fxa_hawk_post_async (self, "certificate/sign", tokenID_hex,
                                          reqHMACkey, EPHY_SYNC_TOKEN_LENGTH, request_body,
-                                         obtain_signed_certificate_response_cb, self);
+                                         obtain_signed_certificate_cb, self);
 
   g_free (tokenID);
   g_free (reqHMACkey);
@@ -784,9 +784,9 @@ ephy_sync_service_clear_tokens (EphySyncService *self)
 }
 
 static void
-destroy_session_response_cb (SoupSession *session,
-                             SoupMessage *msg,
-                             gpointer     user_data)
+destroy_session_cb (SoupSession *session,
+                    SoupMessage *msg,
+                    gpointer     user_data)
 {
   JsonParser *parser;
   JsonObject *json;
@@ -843,7 +843,7 @@ ephy_sync_service_destroy_session (EphySyncService *self,
                                                   hoptions);
   soup_message_headers_append (msg->request_headers, "authorization", hheader->header);
   soup_message_headers_append (msg->request_headers, "content-type", content_type);
-  soup_session_queue_message (self->session, msg, destroy_session_response_cb, NULL);
+  soup_session_queue_message (self->session, msg, destroy_session_cb, NULL);
 
   ephy_sync_crypto_hawk_options_free (hoptions);
   ephy_sync_crypto_hawk_header_free (hheader);
@@ -945,9 +945,9 @@ ephy_sync_service_finish_sign_in (EphySyncService *self,
 }
 
 static void
-upload_bookmark_response_cb (SoupSession *session,
-                             SoupMessage *msg,
-                             gpointer     user_data)
+upload_bookmark_cb (SoupSession *session,
+                    SoupMessage *msg,
+                    gpointer     user_data)
 {
   EphySyncService *service;
   EphyBookmarksManager *manager;
@@ -996,17 +996,16 @@ ephy_sync_service_upload_bookmark (EphySyncService *self,
   ephy_sync_service_queue_storage_request (self, endpoint,
                                            SOUP_METHOD_PUT, bso, -1,
                                            force ? -1 : modified,
-                                           upload_bookmark_response_cb,
-                                           bookmark);
+                                           upload_bookmark_cb, bookmark);
 
   g_free (endpoint);
   g_free (bso);
 }
 
 static void
-download_bookmark_response_cb (SoupSession *session,
-                               SoupMessage *msg,
-                               gpointer     user_data)
+download_bookmark_cb (SoupSession *session,
+                      SoupMessage *msg,
+                      gpointer     user_data)
 {
   EphySyncService *service;
   EphyBookmarksManager *manager;
@@ -1062,15 +1061,15 @@ ephy_sync_service_download_bookmark (EphySyncService *self,
                               ephy_bookmark_get_id (bookmark));
   ephy_sync_service_queue_storage_request (self, endpoint,
                                            SOUP_METHOD_GET, NULL, -1, -1,
-                                           download_bookmark_response_cb, NULL);
+                                           download_bookmark_cb, NULL);
 
   g_free (endpoint);
 }
 
 static void
-delete_bookmark_conditional_response_cb (SoupSession *session,
-                                         SoupMessage *msg,
-                                         gpointer     user_data)
+delete_bookmark_conditional_cb (SoupSession *session,
+                                SoupMessage *msg,
+                                gpointer     user_data)
 {
   EphySyncService *service;
   EphyBookmark *bookmark;
@@ -1093,9 +1092,9 @@ delete_bookmark_conditional_response_cb (SoupSession *session,
 }
 
 static void
-delete_bookmark_response_cb (SoupSession *session,
-                             SoupMessage *msg,
-                             gpointer     user_data)
+delete_bookmark_cb (SoupSession *session,
+                    SoupMessage *msg,
+                    gpointer     user_data)
 {
   EphySyncService *service;
 
@@ -1129,21 +1128,21 @@ ephy_sync_service_delete_bookmark (EphySyncService *self,
   if (conditional == TRUE) {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_GET, NULL, -1, -1,
-                                             delete_bookmark_conditional_response_cb,
+                                             delete_bookmark_conditional_cb,
                                              bookmark);
   } else {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_DELETE, NULL, -1, -1,
-                                             delete_bookmark_response_cb, NULL);
+                                             delete_bookmark_cb, NULL);
   }
 
   g_free (endpoint);
 }
 
 static void
-sync_bookmarks_first_time_response_cb (SoupSession *session,
-                                       SoupMessage *msg,
-                                       gpointer     user_data)
+sync_bookmarks_first_time_cb (SoupSession *session,
+                              SoupMessage *msg,
+                              gpointer     user_data)
 {
   EphySyncService *service;
   EphyBookmarksManager *manager;
@@ -1259,9 +1258,9 @@ out:
 }
 
 static void
-sync_bookmarks_response_cb (SoupSession *session,
-                            SoupMessage *msg,
-                            gpointer     user_data)
+sync_bookmarks_cb (SoupSession *session,
+                   SoupMessage *msg,
+                   gpointer     user_data)
 {
   EphySyncService *service;
   EphyBookmarksManager *manager;
@@ -1364,12 +1363,12 @@ ephy_sync_service_sync_bookmarks (EphySyncService *self,
   if (first == TRUE) {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_GET, NULL, -1, -1,
-                                             sync_bookmarks_first_time_response_cb, NULL);
+                                             sync_bookmarks_first_time_cb, NULL);
   } else {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_GET, NULL,
                                              ephy_sync_service_get_sync_time (self), -1,
-                                             sync_bookmarks_response_cb, NULL);
+                                             sync_bookmarks_cb, NULL);
   }
 
   g_free (endpoint);
