@@ -129,30 +129,6 @@ storage_server_request_async_data_free (StorageRequestAsyncData *data)
   g_slice_free (StorageRequestAsyncData, data);
 }
 
-static void
-destroy_session_response_cb (SoupSession *session,
-                             SoupMessage *msg,
-                             gpointer     user_data)
-{
-  JsonParser *parser;
-  JsonObject *json;
-
-  if (msg->status_code == 200) {
-    LOG ("Session destroyed");
-    return;
-  }
-
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-
-  g_warning ("Failed to destroy session: errno: %ld, errmsg: %s",
-             json_object_get_int_member (json, "errno"),
-             json_object_get_string_member (json, "message"));
-
-  g_object_unref (parser);
-}
-
 static gboolean
 ephy_sync_service_storage_credentials_is_expired (EphySyncService *self)
 {
@@ -805,6 +781,30 @@ ephy_sync_service_clear_tokens (EphySyncService *self)
   g_clear_pointer (&self->unwrapBKey, g_free);
   g_clear_pointer (&self->kA, g_free);
   g_clear_pointer (&self->kB, g_free);
+}
+
+static void
+destroy_session_response_cb (SoupSession *session,
+                             SoupMessage *msg,
+                             gpointer     user_data)
+{
+  JsonParser *parser;
+  JsonObject *json;
+
+  if (msg->status_code == 200) {
+    LOG ("Session destroyed");
+    return;
+  }
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
+
+  g_warning ("Failed to destroy session: errno: %ld, errmsg: %s",
+             json_object_get_int_member (json, "errno"),
+             json_object_get_string_member (json, "message"));
+
+  g_object_unref (parser);
 }
 
 void
