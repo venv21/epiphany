@@ -499,9 +499,9 @@ ephy_sync_service_send_storage_request (EphySyncService         *self,
   }
 
   hheader = ephy_sync_crypto_compute_hawk_header (url, data->method, self->storage_credentials_id,
-                                                 (guint8 *)self->storage_credentials_key,
-                                                 strlen (self->storage_credentials_key),
-                                                 hoptions);
+                                                  (guint8 *)self->storage_credentials_key,
+                                                  strlen (self->storage_credentials_key),
+                                                  hoptions);
   soup_message_headers_append (msg->request_headers, "authorization", hheader->header);
   soup_session_queue_message (self->session, msg, data->callback, data->user_data);
 
