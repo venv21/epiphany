@@ -119,7 +119,7 @@ storage_server_request_async_data_new (char                *endpoint,
 static void
 storage_server_request_async_data_free (StorageRequestAsyncData *data)
 {
-  g_assert (data != NULL);
+  g_assert (data);
 
   g_free (data->endpoint);
   g_free (data->request_body);
@@ -131,7 +131,7 @@ ephy_sync_service_storage_credentials_is_expired (EphySyncService *self)
 {
   g_assert (EPHY_IS_SYNC_SERVICE (self));
 
-  if (self->storage_credentials_id == NULL || self->storage_credentials_key == NULL)
+  if (!self->storage_credentials_id || !self->storage_credentials_key)
     return TRUE;
 
   if (self->storage_credentials_expiry_time == 0)
@@ -205,7 +205,7 @@ ephy_sync_service_fxa_hawk_get_sync (EphySyncService  *self,
   soup_message_headers_append (msg->request_headers, "authorization", hheader->header);
   soup_session_send_message (self->session, msg);
 
-  if (node != NULL) {
+  if (node) {
     parser = json_parser_new ();
     json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
     *node = json_node_copy (json_parser_get_root (parser));
@@ -254,7 +254,7 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   json = json_node_get_object (json_parser_get_root (parser));
   alg = json_object_get_string_member (json, "alg");
 
-  if (g_strcmp0 (alg, "RS256") != 0) {
+  if (g_strcmp0 (alg, "RS256")) {
     g_warning ("Expected algorithm RS256, found %s. Giving up.", alg);
     goto out;
   }
@@ -265,7 +265,7 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   email = json_object_get_string_member (principal, "email");
   uid_email = g_strdup_printf ("%s@%s", self->uid, soup_uri_get_host (uri));
 
-  if (g_strcmp0 (uid_email, email) != 0) {
+  if (g_strcmp0 (uid_email, email)) {
     g_warning ("Expected email %s, found %s. Giving up.", uid_email, email);
     goto out;
   }
@@ -402,7 +402,7 @@ obtain_signed_certificate_cb (SoupSession *session,
 
   certificate = json_object_get_string_member (json, "cert");
 
-  if (ephy_sync_service_certificate_is_valid (service, certificate) == FALSE) {
+  if (!ephy_sync_service_certificate_is_valid (service, certificate)) {
     ephy_sync_crypto_rsa_key_pair_free (service->keypair);
     service->locked = FALSE;
     goto out;
@@ -431,7 +431,7 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
   g_assert (self->sessionToken);
 
   /* Generate a new RSA key pair that is going to be used to sign the new certificate. */
-  if (self->keypair != NULL)
+  if (self->keypair)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
 
   self->keypair = ephy_sync_crypto_generate_rsa_key_pair ();
@@ -478,14 +478,14 @@ ephy_sync_service_send_storage_request (EphySyncService         *self,
   url = g_strdup_printf ("%s/%s", self->storage_endpoint, data->endpoint);
   msg = soup_message_new (data->method, url);
 
-  if (data->request_body != NULL) {
+  if (data->request_body) {
     hoptions = ephy_sync_crypto_hawk_options_new (NULL, NULL, NULL, content_type,
                                                   NULL, NULL, NULL, data->request_body, NULL);
     soup_message_set_request (msg, content_type, SOUP_MEMORY_COPY,
                               data->request_body, strlen (data->request_body));
   }
 
-  if (g_strcmp0 (data->method, SOUP_METHOD_POST) == 0)
+  if (!g_strcmp0 (data->method, SOUP_METHOD_POST))
     soup_message_headers_append (msg->request_headers, "content-type", content_type);
 
   if (data->modified_since >= 0) {
@@ -505,7 +505,7 @@ ephy_sync_service_send_storage_request (EphySyncService         *self,
   soup_message_headers_append (msg->request_headers, "authorization", hheader->header);
   soup_session_queue_message (self->session, msg, data->callback, data->user_data);
 
-  if (hoptions != NULL)
+  if (hoptions)
     ephy_sync_crypto_hawk_options_free (hoptions);
 
   g_free (url);
@@ -564,7 +564,7 @@ ephy_sync_service_finalize (GObject *object)
 {
   EphySyncService *self = EPHY_SYNC_SERVICE (object);
 
-  if (self->keypair != NULL)
+  if (self->keypair)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
 
   g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_server_request_async_data_free);
@@ -629,7 +629,7 @@ ephy_sync_service_init (EphySyncService *self)
 
   email = g_settings_get_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER);
 
-  if (g_strcmp0 (email, "") != 0) {
+  if (g_strcmp0 (email, "")) {
     ephy_sync_service_set_user_email (self, email);
     ephy_sync_secret_load_tokens (self);
   }
@@ -722,7 +722,7 @@ ephy_sync_service_set_token (EphySyncService   *self,
                              EphySyncTokenType  type)
 {
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (value != NULL);
+  g_return_if_fail (value);
 
   switch (type) {
     case TOKEN_UID:
@@ -821,9 +821,9 @@ ephy_sync_service_destroy_session (EphySyncService *self,
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
 
-  if (sessionToken == NULL)
+  if (!sessionToken)
     sessionToken = ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN);
-  g_return_if_fail (sessionToken != NULL);
+  g_return_if_fail (sessionToken);
 
   url = g_strdup_printf ("%s%s", MOZILLA_FXA_SERVER_URL, endpoint);
   ephy_sync_crypto_process_session_token (sessionToken, &tokenID, &reqHMACkey, &requestKey);
@@ -902,14 +902,14 @@ ephy_sync_service_finish_sign_in (EphySyncService *self,
   char *kB_hex;
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (email != NULL);
-  g_return_if_fail (uid != NULL);
-  g_return_if_fail (sessionToken != NULL);
-  g_return_if_fail (keyFetchToken != NULL);
-  g_return_if_fail (unwrapBKey != NULL);
-  g_return_if_fail (bundle != NULL);
-  g_return_if_fail (respHMACkey != NULL);
-  g_return_if_fail (respXORkey != NULL);
+  g_return_if_fail (email);
+  g_return_if_fail (uid);
+  g_return_if_fail (sessionToken);
+  g_return_if_fail (keyFetchToken);
+  g_return_if_fail (unwrapBKey);
+  g_return_if_fail (bundle);
+  g_return_if_fail (respHMACkey);
+  g_return_if_fail (respXORkey);
 
   /* Derive the sync keys form the received key bundle. */
   unwrapKB = ephy_sync_crypto_decode_hex (unwrapBKey);
@@ -1121,7 +1121,7 @@ ephy_sync_service_delete_bookmark (EphySyncService *self,
 
   /* If the bookmark does not exist on the server, delete it from the local
    * instance too. */
-  if (conditional == TRUE) {
+  if (conditional) {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_GET, NULL, -1, -1,
                                              delete_bookmark_conditional_cb,
@@ -1169,17 +1169,17 @@ sync_bookmarks_first_time_cb (SoupSession *session,
     EphyBookmark *remote = ephy_bookmark_from_bso (bso);
     EphyBookmark *local;
 
-    if (remote == NULL)
+    if (!remote)
       continue;
 
     local = ephy_bookmarks_manager_get_bookmark_by_id (manager, ephy_bookmark_get_id (remote));
 
-    if (local == NULL) {
+    if (!local) {
       local = ephy_bookmarks_manager_get_bookmark_by_url (manager, ephy_bookmark_get_url (remote));
 
       /* If there is no local equivalent of the remote bookmark, then add it to
        * the local instance together with its tags. */
-      if (local == NULL) {
+      if (!local) {
         ephy_bookmarks_manager_add_bookmark (manager, remote);
 
         /* We have to manually add the tags to the bookmarks manager. */
@@ -1234,7 +1234,7 @@ sync_bookmarks_first_time_cb (SoupSession *session,
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter)) {
     EphyBookmark *bookmark = g_sequence_get (iter);
 
-    if (g_hash_table_contains (marked, bookmark) == FALSE)
+    if (!g_hash_table_contains (marked, bookmark))
       ephy_sync_service_upload_bookmark (service, bookmark, TRUE);
   }
 
@@ -1290,12 +1290,12 @@ sync_bookmarks_cb (SoupSession *session,
     EphyBookmark *remote = ephy_bookmark_from_bso (bso);
     EphyBookmark *local;
 
-    if (remote == NULL)
+    if (!remote)
       continue;
 
     local = ephy_bookmarks_manager_get_bookmark_by_id (manager, ephy_bookmark_get_id (remote));
 
-    if (local == NULL) {
+    if (!local) {
       ephy_bookmarks_manager_add_bookmark (manager, remote);
 
       /* We have to manually add the tags to the bookmarks manager. */
@@ -1325,7 +1325,7 @@ handle_local_bookmarks:
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter)) {
     EphyBookmark *bookmark = EPHY_BOOKMARK (g_sequence_get (iter));
 
-    if (ephy_bookmark_is_uploaded (bookmark) == TRUE)
+    if (ephy_bookmark_is_uploaded (bookmark))
       ephy_sync_service_delete_bookmark (service, bookmark, TRUE);
     else
       ephy_sync_service_upload_bookmark (service, bookmark, FALSE);
@@ -1356,7 +1356,7 @@ ephy_sync_service_sync_bookmarks (EphySyncService *self,
 
   endpoint = g_strdup_printf ("storage/%s?full=true", EPHY_BOOKMARKS_COLLECTION);
 
-  if (first == TRUE) {
+  if (first) {
     ephy_sync_service_queue_storage_request (self, endpoint,
                                              SOUP_METHOD_GET, NULL, -1, -1,
                                              sync_bookmarks_first_time_cb, NULL);
@@ -1388,7 +1388,7 @@ ephy_sync_service_start_periodical_sync (EphySyncService *self,
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
   g_return_if_fail (ephy_sync_service_is_signed_in (self));
 
-  if (now == TRUE)
+  if (now)
     do_periodical_sync (self);
 
   self->source_id = g_timeout_add_seconds (SYNC_FREQUENCY, do_periodical_sync, NULL);

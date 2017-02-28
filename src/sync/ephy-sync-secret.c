@@ -55,7 +55,7 @@ forget_tokens_cb (SecretService *service,
 
   secret_service_clear_finish (service, result, &error);
 
-  if (error != NULL) {
+  if (error) {
     g_warning ("sync-secret: Failed to clear the secret schema: %s", error->message);
     g_error_free (error);
   }
@@ -94,12 +94,12 @@ load_tokens_cb (SecretService *service,
 
   matches = secret_service_search_finish (service, result, &error);
 
-  if (error != NULL || matches == NULL) {
+  if (error || !matches) {
     g_set_error (&ret_error,
                  SYNC_SECRET_ERROR,
                  SYNC_SECRET_ERROR_LOAD,
                  _("The sync tokens could not be found."));
-    if (error != NULL)
+    if (error)
       g_warning ("sync-secret: Failed to find the tokens: %s", error->message);
     goto out;
   }
@@ -118,7 +118,7 @@ load_tokens_cb (SecretService *service,
   email = g_hash_table_lookup (attributes, EMAIL_KEY);
   user_email = ephy_sync_service_get_user_email (sync_service);
 
-  if (email == NULL || g_strcmp0 (email, user_email) != 0) {
+  if (!email || g_strcmp0 (email, user_email)) {
     g_set_error (&ret_error,
                  SYNC_SECRET_ERROR,
                  SYNC_SECRET_ERROR_LOAD,
@@ -128,7 +128,7 @@ load_tokens_cb (SecretService *service,
   }
 
   value = secret_item_get_secret (item);
-  if (value == NULL) {
+  if (!value) {
     g_set_error (&ret_error,
                  SYNC_SECRET_ERROR,
                  SYNC_SECRET_ERROR_LOAD,
@@ -141,7 +141,7 @@ load_tokens_cb (SecretService *service,
   tokens = secret_value_get_text (value);
   json_parser_load_from_data (parser, tokens, -1, &error);
 
-  if (error != NULL) {
+  if (error) {
     g_set_error (&ret_error,
                  SYNC_SECRET_ERROR,
                  SYNC_SECRET_ERROR_LOAD,
@@ -164,16 +164,16 @@ out:
   /* Notify whether the tokens were successfully loaded. */
   g_signal_emit_by_name (sync_service, "sync-tokens-load-finished", ret_error);
 
-  if (error != NULL)
+  if (error)
     g_error_free (error);
 
-  if (ret_error != NULL)
+  if (ret_error)
     g_error_free (ret_error);
 
-  if (value != NULL)
+  if (value)
     secret_value_unref (value);
 
-  if (parser != NULL)
+  if (parser)
     g_object_unref (parser);
 
   g_list_free (members);
@@ -206,7 +206,7 @@ store_tokens_cb (SecretService *service,
   /* Notify whether the tokens were successfully stored. */
   g_signal_emit_by_name (sync_service, "sync-tokens-store-finished", error);
 
-  if (error != NULL)
+  if (error)
     g_error_free (error);
 }
 
@@ -225,13 +225,13 @@ ephy_sync_secret_store_tokens (EphySyncService *service,
   char *tokens;
   char *label;
 
-  g_return_if_fail (email != NULL);
-  g_return_if_fail (uid != NULL);
-  g_return_if_fail (sessionToken != NULL);
-  g_return_if_fail (keyFetchToken != NULL);
-  g_return_if_fail (unwrapBKey != NULL);
-  g_return_if_fail (kA != NULL);
-  g_return_if_fail (kB != NULL);
+  g_return_if_fail (email);
+  g_return_if_fail (uid);
+  g_return_if_fail (sessionToken);
+  g_return_if_fail (keyFetchToken);
+  g_return_if_fail (unwrapBKey);
+  g_return_if_fail (kA);
+  g_return_if_fail (kB);
 
   tokens = ephy_sync_utils_build_json_string ("uid", uid,
                                               "sessionToken", sessionToken,

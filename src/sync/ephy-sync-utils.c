@@ -69,7 +69,7 @@ ephy_sync_utils_make_audience (const char *url)
   char *audience;
   char *port;
 
-  g_return_val_if_fail (url != NULL, NULL);
+  g_return_val_if_fail (url, NULL);
 
   uri = soup_uri_new (url);
   scheme = soup_uri_get_scheme (uri);
@@ -80,7 +80,7 @@ ephy_sync_utils_make_audience (const char *url)
    * the default port for the url's scheme so we need to check if the port was
    * really present in the url.
    */
-  if (g_strstr_len (url, -1, port) != NULL)
+  if (g_strstr_len (url, -1, port))
     audience = g_strdup_printf ("%s://%s%s", scheme, host, port);
   else
     audience = g_strdup_printf ("%s://%s", scheme, host);
@@ -115,17 +115,17 @@ ephy_sync_utils_token_name_from_type (EphySyncTokenType type)
 EphySyncTokenType
 ephy_sync_utils_token_type_from_name (const char *name)
 {
-  if (g_strcmp0 (name, "uid") == 0) {
+  if (!g_strcmp0 (name, "uid")) {
     return TOKEN_UID;
-  } else if (g_strcmp0 (name, "sessionToken") == 0) {
+  } else if (!g_strcmp0 (name, "sessionToken")) {
     return TOKEN_SESSIONTOKEN;
-  } else if (g_strcmp0 (name, "keyFetchToken") == 0) {
+  } else if (!g_strcmp0 (name, "keyFetchToken")) {
     return TOKEN_KEYFETCHTOKEN;
-  } else if (g_strcmp0 (name, "unwrapBKey") == 0) {
+  } else if (!g_strcmp0 (name, "unwrapBKey")) {
     return TOKEN_UNWRAPBKEY;
-  } else if (g_strcmp0 (name, "kA") == 0) {
+  } else if (!g_strcmp0 (name, "kA")) {
     return TOKEN_KA;
-  } else if (g_strcmp0 (name, "kB") == 0) {
+  } else if (!g_strcmp0 (name, "kB")) {
     return TOKEN_KB;
   } else {
     g_assert_not_reached ();
