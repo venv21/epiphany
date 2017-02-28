@@ -61,14 +61,6 @@ void             ephy_sync_service_finish_sign_in               (EphySyncService
                                                                  char            *bundle,
                                                                  guint8          *respHMACkey,
                                                                  guint8          *respXORkey);
-void             ephy_sync_service_send_storage_message         (EphySyncService     *self,
-                                                                 char                *endpoint,
-                                                                 const char          *method,
-                                                                 char                *request_body,
-                                                                 double               modified_since,
-                                                                 double               unmodified_since,
-                                                                 SoupSessionCallback  callback,
-                                                                 gpointer             user_data);
 void             ephy_sync_service_upload_bookmark              (EphySyncService *self,
                                                                  EphyBookmark    *bookmark,
                                                                  gboolean         force);
