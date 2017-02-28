@@ -94,8 +94,7 @@ typedef struct {
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
 
 static StorageRequestAsyncData *
-storage_server_request_async_data_new (EphySyncService     *service,
-                                       char                *endpoint,
+storage_server_request_async_data_new (char                *endpoint,
                                        const char          *method,
                                        char                *request_body,
                                        double               modified_since,
@@ -106,7 +105,6 @@ storage_server_request_async_data_new (EphySyncService     *service,
   StorageRequestAsyncData *data;
 
   data = g_slice_new (StorageRequestAsyncData);
-  data->service = g_object_ref (service);
   data->endpoint = g_strdup (endpoint);
   data->method = method;
   data->request_body = g_strdup (request_body);
@@ -123,7 +121,6 @@ storage_server_request_async_data_free (StorageRequestAsyncData *data)
 {
   g_assert (data != NULL);
 
-  g_object_unref (data->service);
   g_free (data->endpoint);
   g_free (data->request_body);
   g_slice_free (StorageRequestAsyncData, data);
@@ -296,7 +293,7 @@ obtain_storage_credentials_cb (SoupSession *session,
   JsonParser *parser;
   JsonObject *json;
 
-  service = EPHY_SYNC_SERVICE (user_data);
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   if (msg->status_code != 200) {
     g_warning ("Failed to talk to the Token Server, status code %u. "
@@ -351,7 +348,7 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
    * recognize accounts that were previously used to sync Firefox data too. */
   soup_message_headers_append (msg->request_headers, "X-Client-State", client_state);
   soup_message_headers_append (msg->request_headers, "authorization", authorization);
-  soup_session_queue_message (self->session, msg, obtain_storage_credentials_cb, self);
+  soup_session_queue_message (self->session, msg, obtain_storage_credentials_cb, NULL);
 
   g_free (kB);
   g_free (hashed_kB);
@@ -371,7 +368,7 @@ obtain_signed_certificate_cb (SoupSession *session,
   JsonObject *json;
   const char *certificate;
 
-  service = EPHY_SYNC_SERVICE (user_data);
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   parser = json_parser_new ();
   json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
@@ -451,7 +448,7 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
                                   public_key_json, CERTIFICATE_DURATION);
   ephy_sync_service_fxa_hawk_post_async (self, "certificate/sign", tokenID_hex,
                                          reqHMACkey, EPHY_SYNC_TOKEN_LENGTH, request_body,
-                                         obtain_signed_certificate_cb, self);
+                                         obtain_signed_certificate_cb, NULL);
 
   g_free (tokenID);
   g_free (reqHMACkey);
@@ -555,8 +552,7 @@ ephy_sync_service_queue_storage_request (EphySyncService     *self,
   g_assert (method);
 
   g_queue_push_tail (self->storage_queue,
-                     storage_server_request_async_data_new (self, endpoint,
-                                                            method, request_body,
+                     storage_server_request_async_data_new (endpoint, method, request_body,
                                                             modified_since, unmodified_since,
                                                             callback, user_data));
 
@@ -1377,8 +1373,9 @@ ephy_sync_service_sync_bookmarks (EphySyncService *self,
 static gboolean
 do_periodical_sync (gpointer user_data)
 {
-  EphySyncService *service = EPHY_SYNC_SERVICE (user_data);
+  EphySyncService *service;
 
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   ephy_sync_service_sync_bookmarks (service, FALSE);
 
   return G_SOURCE_CONTINUE;
@@ -1394,7 +1391,7 @@ ephy_sync_service_start_periodical_sync (EphySyncService *self,
   if (now == TRUE)
     do_periodical_sync (self);
 
-  self->source_id = g_timeout_add_seconds (SYNC_FREQUENCY, do_periodical_sync, self);
+  self->source_id = g_timeout_add_seconds (SYNC_FREQUENCY, do_periodical_sync, NULL);
 }
 
 void
