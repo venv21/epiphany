@@ -129,7 +129,7 @@ storage_server_request_async_data_free (StorageRequestAsyncData *data)
 static gboolean
 ephy_sync_service_storage_credentials_is_expired (EphySyncService *self)
 {
-  g_return_val_if_fail (EPHY_IS_SYNC_SERVICE (self), TRUE);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
 
   if (self->storage_credentials_id == NULL || self->storage_credentials_key == NULL)
     return TRUE;
@@ -157,11 +157,11 @@ ephy_sync_service_fxa_hawk_post_async (EphySyncService     *self,
   char *url;
   const char *content_type = "application/json";
 
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (endpoint != NULL);
-  g_return_if_fail (id != NULL);
-  g_return_if_fail (key != NULL);
-  g_return_if_fail (request_body != NULL);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (endpoint);
+  g_assert (id);
+  g_assert (key);
+  g_assert (request_body);
 
   url = g_strdup_printf ("%s%s", MOZILLA_FXA_SERVER_URL, endpoint);
   msg = soup_message_new (SOUP_METHOD_POST, url);
@@ -194,10 +194,10 @@ ephy_sync_service_fxa_hawk_get_sync (EphySyncService  *self,
   char *url;
   guint retval;
 
-  g_return_val_if_fail (EPHY_IS_SYNC_SERVICE (self), 0);
-  g_return_val_if_fail (endpoint != NULL, 0);
-  g_return_val_if_fail (id != NULL, 0);
-  g_return_val_if_fail (key != NULL, 0);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (endpoint);
+  g_assert (id);
+  g_assert (key);
 
   url = g_strdup_printf ("%s%s", MOZILLA_FXA_SERVER_URL, endpoint);
   msg = soup_message_new (SOUP_METHOD_GET, url);
@@ -238,8 +238,8 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   gsize len;
   gboolean retval = FALSE;
 
-  g_return_val_if_fail (EPHY_IS_SYNC_SERVICE (self), FALSE);
-  g_return_val_if_fail (certificate != NULL, FALSE);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (certificate);
 
   /* Check if the certificate is something that we were expecting, i.e.
    * if the algorithm and email fields match the expected values. */
@@ -329,14 +329,14 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
   char *assertion;
   char *authorization;
 
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (self->certificate != NULL);
-  g_return_if_fail (self->keypair != NULL);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (self->certificate);
+  g_assert (self->keypair);
 
   audience = ephy_sync_utils_make_audience (MOZILLA_TOKEN_SERVER_URL);
   assertion = ephy_sync_crypto_create_assertion (self->certificate, audience,
                                                  ASSERTION_DURATION, self->keypair);
-  g_return_if_fail (assertion != NULL);
+  g_assert (assertion);
 
   kB = ephy_sync_crypto_decode_hex (self->kB);
   hashed_kB = g_compute_checksum_for_data (G_CHECKSUM_SHA256, kB, EPHY_SYNC_TOKEN_LENGTH);
@@ -427,15 +427,15 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
   char *n;
   char *e;
 
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (self->sessionToken != NULL);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (self->sessionToken);
 
   /* Generate a new RSA key pair that is going to be used to sign the new certificate. */
   if (self->keypair != NULL)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
 
   self->keypair = ephy_sync_crypto_generate_rsa_key_pair ();
-  g_return_if_fail (self->keypair != NULL);
+  g_assert (self->keypair);
 
   /* Derive tokenID, reqHMACkey and requestKey from the sessionToken. */
   ephy_sync_crypto_process_session_token (self->sessionToken, &tokenID, &reqHMACkey, &requestKey);
