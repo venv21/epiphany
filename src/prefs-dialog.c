@@ -197,8 +197,8 @@ sync_sign_in_error_cb (EphySyncService *service,
 }
 
 static void
-hide_fxa_iframe (PrefsDialog *dialog,
-                 const char  *email)
+sync_hide_fxa_iframe (PrefsDialog *dialog,
+                      const char  *email)
 {
   char *text;
   char *account;
@@ -228,7 +228,7 @@ sync_tokens_store_finished_cb (EphySyncService *service,
 
   if (error == NULL) {
     /* Show the 'Signed in' panel. */
-    hide_fxa_iframe (dialog, ephy_sync_service_get_user_email (service));
+    sync_hide_fxa_iframe (dialog, ephy_sync_service_get_user_email (service));
 
     /* Do a first time sync and set a periodical sync to be executed. */
     ephy_sync_service_sync_bookmarks (service, TRUE);
@@ -249,10 +249,10 @@ sync_tokens_store_finished_cb (EphySyncService *service,
 }
 
 static void
-inject_data_to_server (PrefsDialog *dialog,
-                       const char  *type,
-                       const char  *status,
-                       const char  *data)
+sync_send_data_to_fxa_server (PrefsDialog *dialog,
+                              const char  *type,
+                              const char  *status,
+                              const char  *data)
 {
   char *json;
   char *script;
@@ -276,7 +276,7 @@ inject_data_to_server (PrefsDialog *dialog,
 }
 
 static void
-server_message_received_cb (WebKitUserContentManager *manager,
+sync_fxa_server_message_cb (WebKitUserContentManager *manager,
                             WebKitJavascriptResult   *result,
                             PrefsDialog              *dialog)
 {
@@ -308,7 +308,7 @@ server_message_received_cb (WebKitUserContentManager *manager,
     LOG ("Loaded Firefox Sign In iframe");
   } else if (g_strcmp0 (command, "can_link_account") == 0) {
     /* We need to confirm a relink. */
-    inject_data_to_server (dialog, "message", "can_link_account", "{'ok': true}");
+    sync_send_data_to_fxa_server (dialog, "message", "can_link_account", "{'ok': true}");
   } else if (g_strcmp0 (command, "login") == 0) {
     JsonObject *data = json_object_get_object_member (detail, "data");
     const char *email = json_object_get_string_member (data, "email");
@@ -318,7 +318,7 @@ server_message_received_cb (WebKitUserContentManager *manager,
     const char *unwrapBKey = json_object_get_string_member (data, "unwrapBKey");
 
     gtk_widget_set_visible (dialog->sync_sign_in_details, FALSE);
-    inject_data_to_server (dialog, "message", "login", NULL);
+    sync_send_data_to_fxa_server (dialog, "message", "login", NULL);
 
     /* Cannot retrieve the sync keys without keyFetchToken or unwrapBKey. */
     if (keyFetchToken == NULL || unwrapBKey == NULL) {
@@ -340,10 +340,10 @@ server_message_received_cb (WebKitUserContentManager *manager,
                                   sessionToken, keyFetchToken, unwrapBKey);
   } else if (g_strcmp0 (command, "session_status") == 0) {
     /* We are not signed in at this time, which we signal by returning an error. */
-    inject_data_to_server (dialog, "message", "error", NULL);
+    sync_send_data_to_fxa_server (dialog, "message", "error", NULL);
   } else if (g_strcmp0 (command, "sign_out") == 0) {
     /* We are not signed in at this time. We should never get a sign out message! */
-    inject_data_to_server (dialog, "message", "error", NULL);
+    sync_send_data_to_fxa_server (dialog, "message", "error", NULL);
   }
 
 out:
@@ -352,7 +352,7 @@ out:
 }
 
 static void
-setup_fxa_sign_in_view (PrefsDialog *dialog)
+sync_setup_sign_in_view (PrefsDialog *dialog)
 {
   EphyEmbedShell *shell;
   WebKitWebContext *embed_context;
@@ -372,7 +372,7 @@ setup_fxa_sign_in_view (PrefsDialog *dialog)
   webkit_user_content_manager_add_script (dialog->fxa_manager, dialog->fxa_script);
   g_signal_connect (dialog->fxa_manager,
                     "script-message-received::accountsCommandHandler",
-                    G_CALLBACK (server_message_received_cb),
+                    G_CALLBACK (sync_fxa_server_message_cb),
                     dialog);
   webkit_user_content_manager_register_script_message_handler (dialog->fxa_manager,
                                                                "accountsCommandHandler");
@@ -420,7 +420,7 @@ on_sync_sign_out_button_clicked (GtkWidget   *button,
 
   /* Show sign in box. */
   if (dialog->fxa_web_view == NULL)
-    setup_fxa_sign_in_view (dialog);
+    sync_setup_sign_in_view (dialog);
   else
     webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
 
@@ -1528,7 +1528,7 @@ setup_sync_page (PrefsDialog *dialog)
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   if (ephy_sync_service_is_signed_in (service) == FALSE) {
-    setup_fxa_sign_in_view (dialog);
+    sync_setup_sign_in_view (dialog);
     gtk_container_remove (GTK_CONTAINER (dialog->sync_authenticate_box),
                           dialog->sync_sign_out_box);
   } else {
