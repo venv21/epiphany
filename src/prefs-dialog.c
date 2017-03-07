@@ -168,22 +168,32 @@ prefs_dialog_finalize (GObject *object)
 
 #ifdef ENABLE_SYNC
 static void
+sync_sign_in_details_show (PrefsDialog *dialog,
+                           const char  *text)
+{
+  char *message;
+
+  g_assert (EPHY_IS_PREFS_DIALOG (dialog));
+
+  message = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>", text);
+  gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), message);
+  gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
+
+  g_free (message);
+}
+
+
+static void
 sync_sign_in_error_cb (EphySyncService *service,
                        const char      *error,
                        PrefsDialog     *dialog)
 {
-  char *message;
-
   g_assert (EPHY_IS_SYNC_SERVICE (service));
   g_assert (EPHY_IS_PREFS_DIALOG (dialog));
 
-  /* Display the error message to the user. */
-  message = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>", error);
-  gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), message);
-  gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
+  /* Display the error message and reload the iframe. */
+  sync_sign_in_details_show (dialog, error);
   webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
-
-  g_free (message);
 }
 
 static void
@@ -224,8 +234,6 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     ephy_sync_service_sync_bookmarks (service, TRUE);
     ephy_sync_service_start_periodical_sync (service, FALSE);
   } else {
-    char *message;
-
     /* Destroy the current session. */
     ephy_sync_service_destroy_session (service, NULL);
 
@@ -234,13 +242,9 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     ephy_sync_service_set_user_email (service, NULL);
     ephy_sync_service_clear_tokens (service);
 
-    /* Display the error message to the user. */
-    message = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>", error->message);
-    gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), message);
-    gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
+    /* Display the error message and reload the iframe. */
+    sync_sign_in_details_show (dialog, error->message);
     webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
-
-    g_free (message);
   }
 }
 
@@ -312,7 +316,6 @@ server_message_received_cb (WebKitUserContentManager *manager,
     const char *sessionToken = json_object_get_string_member (data, "sessionToken");
     const char *keyFetchToken = json_object_get_string_member (data, "keyFetchToken");
     const char *unwrapBKey = json_object_get_string_member (data, "unwrapBKey");
-    char *text;
 
     gtk_widget_set_visible (dialog->sync_sign_in_details, FALSE);
     inject_data_to_server (dialog, "message", "login", NULL);
@@ -321,24 +324,17 @@ server_message_received_cb (WebKitUserContentManager *manager,
     if (keyFetchToken == NULL || unwrapBKey == NULL) {
       g_warning ("Ignoring login with keyFetchToken or unwrapBKey missing!"
                  "Cannot retrieve sync keys with one of them missing.");
-      ephy_sync_service_destroy_session (service, sessionToken);
 
-      text = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>",
-                              _("Something went wrong, please try again."));
-      gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), text);
-      gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
+      ephy_sync_service_destroy_session (service, sessionToken);
+      sync_sign_in_details_show (dialog, _("Something went wrong, please try again."));
       webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
 
-      g_free (text);
       goto out;
     }
 
-    if (json_object_get_boolean_member (data, "verified") == FALSE) {
-      text = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>",
-                              _("Please don’t leave this page until you have completed the verification."));
-      gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), text);
-      gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
-    }
+    if (json_object_get_boolean_member (data, "verified") == FALSE)
+      sync_sign_in_details_show (dialog, _("Please don’t leave this page until "
+                                           "you have completed the verification."));
 
     ephy_sync_service_do_sign_in (service, email, uid,
                                   sessionToken, keyFetchToken, unwrapBKey);
