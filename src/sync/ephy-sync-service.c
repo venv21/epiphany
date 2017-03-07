@@ -41,6 +41,7 @@
 #define SYNC_FREQUENCY            (15 * 60)        /* seconds */
 #define CERTIFICATE_DURATION      (60 * 60 * 1000) /* milliseconds, limited to 24 hours */
 #define ASSERTION_DURATION        (5 * 60)         /* seconds */
+#define STORAGE_VERSION           5
 
 struct _EphySyncService {
   GObject      parent_instance;
@@ -907,6 +908,73 @@ ephy_sync_service_destroy_session (EphySyncService *self,
 }
 
 static void
+check_storage_version_cb (SoupSession *session,
+                          SoupMessage *msg,
+                          gpointer     user_data)
+{
+  EphySyncService *service;
+  JsonParser *parser;
+  JsonObject *json;
+  char *payload;
+  int storage_version;
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
+
+  if (msg->status_code != 200) {
+    g_warning ("Failed to check storage version: errno: %ld, errmsg: %s",
+               json_object_get_int_member (json, "errno"),
+               json_object_get_string_member (json, "message"));
+    goto out;
+  }
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  payload = g_strdup (json_object_get_string_member (json, "payload"));
+  json_parser_load_from_data (parser, payload, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
+  storage_version = json_object_get_int_member (json, "storageVersion");
+
+  if (storage_version == STORAGE_VERSION) {
+    ephy_sync_secret_store_tokens (service, service->user_email, service->uid,
+                                   service->sessionToken, service->keyFetchToken,
+                                   service->unwrapBKey, service->kA, service->kB);
+  } else {
+    /* Translators: the %d is the storage version, the \n is a newline character. */
+    char *message = g_strdup_printf (_("Your Firefox Account uses a storage version "
+                                       "that Epiphany does not support, namely v%d.\n"
+                                       "Create a new account to use the latest storage version."),
+                                     storage_version);
+    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, message);
+
+    ephy_sync_service_destroy_session (service, NULL);
+    ephy_sync_service_set_user_email (service, NULL);
+    ephy_sync_service_clear_tokens (service);
+    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+    LOG ("Unsupported storage version: %d", storage_version);
+
+    g_free (message);
+  }
+
+  g_free (payload);
+
+out:
+  g_object_unref (parser);
+
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_check_storage_version (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  ephy_sync_service_queue_storage_request (self, "storage/meta/global",
+                                           SOUP_METHOD_GET, NULL, -1, -1,
+                                           check_storage_version_cb, NULL);
+}
+
+static void
 ephy_sync_service_conclude_sign_in (EphySyncService *self,
                                     SignInAsyncData *data,
                                     const char      *bundle)
@@ -939,10 +1007,7 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
   ephy_sync_service_set_token (self, kA_hex, TOKEN_KA);
   ephy_sync_service_set_token (self, kB_hex, TOKEN_KB);
 
-  /* Store the tokens in the secret schema. */
-  ephy_sync_secret_store_tokens (self, data->email, data->uid,
-                                 data->sessionToken, data->keyFetchToken,
-                                 data->unwrapBKey, kA_hex, kB_hex);
+  ephy_sync_service_check_storage_version (self);
 
   g_free (kA);
   g_free (kB);
