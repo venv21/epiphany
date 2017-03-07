@@ -75,6 +75,7 @@ G_DEFINE_TYPE (EphySyncService, ephy_sync_service, G_TYPE_OBJECT);
 enum {
   STORE_FINISHED,
   LOAD_FINISHED,
+  SIGN_IN_ERROR,
   LAST_SIGNAL
 };
 
@@ -90,6 +91,18 @@ typedef struct {
   SoupSessionCallback  callback;
   gpointer             user_data;
 } StorageRequestAsyncData;
+
+typedef struct {
+  char   *email;
+  char   *uid;
+  char   *sessionToken;
+  char   *keyFetchToken;
+  char   *unwrapBKey;
+  char   *tokenID_hex;
+  guint8 *reqHMACkey;
+  guint8 *respHMACkey;
+  guint8 *respXORkey;
+} SignInAsyncData;
 
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
 
@@ -124,6 +137,54 @@ storage_server_request_async_data_free (StorageRequestAsyncData *data)
   g_free (data->endpoint);
   g_free (data->request_body);
   g_slice_free (StorageRequestAsyncData, data);
+}
+
+static SignInAsyncData *
+sign_in_async_data_new (const char   *email,
+                        const char   *uid,
+                        const char   *sessionToken,
+                        const char   *keyFetchToken,
+                        const char   *unwrapBKey,
+                        const char   *tokenID_hex,
+                        const guint8 *reqHMACkey,
+                        const guint8 *respHMACkey,
+                        const guint8 *respXORkey)
+{
+  SignInAsyncData *data;
+
+  data = g_slice_new (SignInAsyncData);
+  data->email = g_strdup (email);
+  data->uid = g_strdup (uid);
+  data->sessionToken = g_strdup (sessionToken);
+  data->keyFetchToken = g_strdup (keyFetchToken);
+  data->unwrapBKey = g_strdup (unwrapBKey);
+  data->tokenID_hex = g_strdup (tokenID_hex);
+  data->reqHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (data->reqHMACkey, reqHMACkey, EPHY_SYNC_TOKEN_LENGTH);
+  data->respHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (data->respHMACkey, respHMACkey, EPHY_SYNC_TOKEN_LENGTH);
+  data->respXORkey = g_malloc (2 * EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (data->respXORkey, respXORkey, 2 * EPHY_SYNC_TOKEN_LENGTH);
+
+  return data;
+}
+
+static void
+sign_in_async_data_free (SignInAsyncData *data)
+{
+  g_assert (data != NULL);
+
+  g_free (data->email);
+  g_free (data->uid);
+  g_free (data->sessionToken);
+  g_free (data->keyFetchToken);
+  g_free (data->unwrapBKey);
+  g_free (data->tokenID_hex);
+  g_free (data->reqHMACkey);
+  g_free (data->respHMACkey);
+  g_free (data->respXORkey);
+
+  g_slice_free (SignInAsyncData, data);
 }
 
 static gboolean
@@ -180,19 +241,18 @@ ephy_sync_service_fxa_hawk_post_async (EphySyncService     *self,
   ephy_sync_crypto_hawk_header_free (hheader);
 }
 
-static guint
-ephy_sync_service_fxa_hawk_get_sync (EphySyncService  *self,
-                                     const char       *endpoint,
-                                     const char       *id,
-                                     guint8           *key,
-                                     gsize             key_length,
-                                     JsonNode        **node)
+static void
+ephy_sync_service_fxa_hawk_get_async (EphySyncService     *self,
+                                      const char          *endpoint,
+                                      const char          *id,
+                                      guint8              *key,
+                                      gsize                key_length,
+                                      SoupSessionCallback  callback,
+                                      gpointer             user_data)
 {
   EphySyncCryptoHawkHeader *hheader;
   SoupMessage *msg;
-  JsonParser *parser;
   char *url;
-  guint retval;
 
   g_assert (EPHY_IS_SYNC_SERVICE (self));
   g_assert (endpoint);
@@ -203,22 +263,10 @@ ephy_sync_service_fxa_hawk_get_sync (EphySyncService  *self,
   msg = soup_message_new (SOUP_METHOD_GET, url);
   hheader = ephy_sync_crypto_compute_hawk_header (url, "GET", id, key, key_length, NULL);
   soup_message_headers_append (msg->request_headers, "authorization", hheader->header);
-  soup_session_send_message (self->session, msg);
-
-  if (node) {
-    parser = json_parser_new ();
-    json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-    *node = json_node_copy (json_parser_get_root (parser));
-    g_object_unref (parser);
-  }
-
-  retval = msg->status_code;
+  soup_session_queue_message (self->session, msg, callback, user_data);
 
   g_free (url);
-  g_object_unref (msg);
   ephy_sync_crypto_hawk_header_free (hheader);
-
-  return retval;
 }
 
 static gboolean
@@ -611,6 +659,14 @@ ephy_sync_service_class_init (EphySyncServiceClass *klass)
                   0, NULL, NULL, NULL,
                   G_TYPE_NONE, 1,
                   G_TYPE_ERROR);
+
+  signals[SIGN_IN_ERROR] =
+    g_signal_new ("sync-sign-in-error",
+                  EPHY_TYPE_SYNC_SERVICE,
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 1,
+                  G_TYPE_STRING);
 }
 
 static void
@@ -850,50 +906,10 @@ ephy_sync_service_destroy_session (EphySyncService *self,
   g_free (url);
 }
 
-char *
-ephy_sync_service_start_sign_in (EphySyncService  *self,
-                                 guint8           *tokenID,
-                                 guint8           *reqHMACkey)
-{
-  JsonNode *node;
-  JsonObject *json;
-  char *tokenID_hex;
-  char *bundle = NULL;
-  guint status_code;
-
-  /* Retrieve the sync keys bundle from the /account/keys endpoint. */
-  tokenID_hex = ephy_sync_crypto_encode_hex (tokenID, 0);
-  status_code = ephy_sync_service_fxa_hawk_get_sync (self, "account/keys", tokenID_hex,
-                                                     reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
-                                                     &node);
-  json = json_node_get_object (node);
-
-  if (status_code == 200) {
-    bundle = g_strdup (json_object_get_string_member (json, "bundle"));
-  } else {
-    LOG ("Failed to retrieve sync keys bundle: code: %ld, errno: %ld, error: '%s', message: '%s'",
-         json_object_get_int_member (json, "code"),
-         json_object_get_int_member (json, "errno"),
-         json_object_get_string_member (json, "error"),
-         json_object_get_string_member (json, "message"));
-  }
-
-  g_free (tokenID_hex);
-  json_node_free (node);
-
-  return bundle;
-}
-
-void
-ephy_sync_service_finish_sign_in (EphySyncService *self,
-                                  const char      *email,
-                                  const char      *uid,
-                                  const char      *sessionToken,
-                                  const char      *keyFetchToken,
-                                  const char      *unwrapBKey,
-                                  char            *bundle,
-                                  guint8          *respHMACkey,
-                                  guint8          *respXORkey)
+static void
+ephy_sync_service_conclude_sign_in (EphySyncService *self,
+                                    SignInAsyncData *data,
+                                    const char      *bundle)
 {
   guint8 *unwrapKB;
   guint8 *kA;
@@ -901,43 +917,130 @@ ephy_sync_service_finish_sign_in (EphySyncService *self,
   char *kA_hex;
   char *kB_hex;
 
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (email);
-  g_return_if_fail (uid);
-  g_return_if_fail (sessionToken);
-  g_return_if_fail (keyFetchToken);
-  g_return_if_fail (unwrapBKey);
-  g_return_if_fail (bundle);
-  g_return_if_fail (respHMACkey);
-  g_return_if_fail (respXORkey);
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (data);
+  g_assert (bundle);
 
-  /* Derive the sync keys form the received key bundle. */
-  unwrapKB = ephy_sync_crypto_decode_hex (unwrapBKey);
-  ephy_sync_crypto_compute_sync_keys (bundle,
-                                      respHMACkey, respXORkey, unwrapKB,
+  /* Derive the master sync keys form the key bundle. */
+  unwrapKB = ephy_sync_crypto_decode_hex (data->unwrapBKey);
+  ephy_sync_crypto_compute_sync_keys (bundle, data->respHMACkey,
+                                      data->respXORkey, unwrapKB,
                                       &kA, &kB);
   kA_hex = ephy_sync_crypto_encode_hex (kA, 0);
   kB_hex = ephy_sync_crypto_encode_hex (kB, 0);
 
   /* Save the email and the tokens. */
-  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, email);
-  ephy_sync_service_set_user_email (self, email);
-  ephy_sync_service_set_token (self, uid, TOKEN_UID);
-  ephy_sync_service_set_token (self, sessionToken, TOKEN_SESSIONTOKEN);
-  ephy_sync_service_set_token (self, keyFetchToken, TOKEN_KEYFETCHTOKEN);
-  ephy_sync_service_set_token (self, unwrapBKey, TOKEN_UNWRAPBKEY);
+  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, data->email);
+  ephy_sync_service_set_user_email (self, data->email);
+  ephy_sync_service_set_token (self, data->uid, TOKEN_UID);
+  ephy_sync_service_set_token (self, data->sessionToken, TOKEN_SESSIONTOKEN);
+  ephy_sync_service_set_token (self, data->keyFetchToken, TOKEN_KEYFETCHTOKEN);
+  ephy_sync_service_set_token (self, data->unwrapBKey, TOKEN_UNWRAPBKEY);
   ephy_sync_service_set_token (self, kA_hex, TOKEN_KA);
   ephy_sync_service_set_token (self, kB_hex, TOKEN_KB);
 
   /* Store the tokens in the secret schema. */
-  ephy_sync_secret_store_tokens (self, email, uid, sessionToken,
-                                 keyFetchToken, unwrapBKey, kA_hex, kB_hex);
+  ephy_sync_secret_store_tokens (self, data->email, data->uid,
+                                 data->sessionToken, data->keyFetchToken,
+                                 data->unwrapBKey, kA_hex, kB_hex);
 
   g_free (kA);
   g_free (kB);
   g_free (kA_hex);
   g_free (kB_hex);
   g_free (unwrapKB);
+  sign_in_async_data_free (data);
+}
+
+static void
+get_account_keys_cb (SoupSession *session,
+                     SoupMessage *msg,
+                     gpointer     user_data)
+{
+  EphySyncService *service;
+  SignInAsyncData *data;
+  JsonParser *parser;
+  JsonObject *json;
+  GError *error = NULL;
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  data = (SignInAsyncData *)user_data;
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+
+  if (error) {
+    g_warning ("Failed to parse JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
+  }
+
+  json = json_node_get_object (json_parser_get_root (parser));
+
+  if (msg->status_code == 200) {
+    /* Extract the master sync keys from the bundle and save tokens. */
+    ephy_sync_service_conclude_sign_in (service, data,
+                                        json_object_get_string_member (json, "bundle"));
+  } else if (msg->status_code == 400 && json_object_get_int_member (json, "errno") == 104) {
+    /* Poll the Firefox Accounts Server until the user verifies the account. */
+    LOG ("Account not verified, retrying...");
+    ephy_sync_service_fxa_hawk_get_async (service, "account/keys", data->tokenID_hex,
+                                          data->reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
+                                          get_account_keys_cb, data);
+  } else {
+    /* Translators: the %s represents the server returned error. */
+    char *message = g_strdup_printf (_("Failed to get the master sync key bundle: %s"),
+                                     json_object_get_string_member (json, "error"));
+    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, message);
+    ephy_sync_service_destroy_session (service, data->sessionToken);
+    g_free (message);
+    sign_in_async_data_free (data);
+  }
+
+out:
+  g_object_unref (parser);
+}
+
+void
+ephy_sync_service_do_sign_in (EphySyncService *self,
+                              const char      *email,
+                              const char      *uid,
+                              const char      *sessionToken,
+                              const char      *keyFetchToken,
+                              const char      *unwrapBKey)
+{
+  SignInAsyncData *data;
+  guint8 *tokenID;
+  guint8 *reqHMACkey;
+  guint8 *respHMACkey;
+  guint8 *respXORkey;
+  char *tokenID_hex;
+
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (email);
+  g_return_if_fail (uid);
+  g_return_if_fail (sessionToken);
+  g_return_if_fail (keyFetchToken);
+  g_return_if_fail (unwrapBKey);
+
+  /* Derive tokenID, reqHMACkey, respHMACkey and respXORkey from keyFetchToken.
+   * tokenID and reqHMACkey are used to sign a HAWK GET requests to the /account/keys
+   * endpoint. The server looks up the stored table entry with tokenID, checks
+   * the request HMAC for validity, then returns the pre-encrypted response.
+   * See https://github.com/mozilla/fxa-auth-server/wiki/onepw-protocol#fetching-sync-keys */
+  ephy_sync_crypto_process_key_fetch_token (keyFetchToken,
+                                            &tokenID, &reqHMACkey,
+                                            &respHMACkey, &respXORkey);
+  tokenID_hex = ephy_sync_crypto_encode_hex (tokenID, 0);
+
+  /* Get the master sync key bundle from the /account/keys endpoint. */
+  data = sign_in_async_data_new (email, uid, sessionToken,
+                                 keyFetchToken, unwrapBKey, tokenID_hex,
+                                 reqHMACkey, respHMACkey, respXORkey);
+  ephy_sync_service_fxa_hawk_get_async (self, "account/keys", tokenID_hex,
+                                        reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
+                                        get_account_keys_cb, data);
+
+  g_free (tokenID_hex);
 }
 
 static void

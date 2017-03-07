@@ -49,18 +49,12 @@ void             ephy_sync_service_clear_storage_credentials    (EphySyncService
 void             ephy_sync_service_clear_tokens                 (EphySyncService *self);
 void             ephy_sync_service_destroy_session              (EphySyncService *self,
                                                                  const char      *sessionToken);
-char            *ephy_sync_service_start_sign_in                (EphySyncService  *self,
-                                                                 guint8           *tokenID,
-                                                                 guint8           *reqHMACkey);
-void             ephy_sync_service_finish_sign_in               (EphySyncService *self,
+void             ephy_sync_service_do_sign_in                   (EphySyncService *self,
                                                                  const char      *email,
                                                                  const char      *uid,
                                                                  const char      *sessionToken,
                                                                  const char      *keyFetchToken,
-                                                                 const char      *unwrapBKey,
-                                                                 char            *bundle,
-                                                                 guint8          *respHMACkey,
-                                                                 guint8          *respXORkey);
+                                                                 const char      *unwrapBKey);
 void             ephy_sync_service_upload_bookmark              (EphySyncService *self,
                                                                  EphyBookmark    *bookmark,
                                                                  gboolean         force);

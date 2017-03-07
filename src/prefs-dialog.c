@@ -51,7 +51,6 @@
 #include <string.h>
 
 #ifdef ENABLE_SYNC
-#include "ephy-sync-crypto.h"
 #include "ephy-sync-secret.h"
 #include "ephy-sync-service.h"
 #endif
@@ -127,25 +126,9 @@ struct _PrefsDialog {
   WebKitWebView *fxa_web_view;
   WebKitUserContentManager *fxa_manager;
   WebKitUserScript *fxa_script;
-  guint fxa_source_id;
 #endif
   GtkWidget *notebook;
 };
-
-#ifdef ENABLE_SYNC
-typedef struct {
-  PrefsDialog *dialog;
-  char        *email;
-  char        *uid;
-  char        *sessionToken;
-  char        *keyFetchToken;
-  char        *unwrapBKey;
-  guint8      *tokenID;
-  guint8      *reqHMACkey;
-  guint8      *respHMACkey;
-  guint8      *respXORkey;
-} FxACallbackData;
-#endif
 
 enum {
   COL_TITLE_ELIDED,
@@ -154,59 +137,6 @@ enum {
 };
 
 G_DEFINE_TYPE (PrefsDialog, prefs_dialog, GTK_TYPE_DIALOG)
-
-#ifdef ENABLE_SYNC
-static FxACallbackData *
-fxa_callback_data_new (PrefsDialog *dialog,
-                       const char  *email,
-                       const char  *uid,
-                       const char  *sessionToken,
-                       const char  *keyFetchToken,
-                       const char  *unwrapBKey,
-                       guint8      *tokenID,
-                       guint8      *reqHMACkey,
-                       guint8      *respHMACkey,
-                       guint8      *respXORkey)
-{
-  FxACallbackData *data = g_slice_new (FxACallbackData);
-
-  data->dialog = g_object_ref (dialog);
-  data->email = g_strdup (email);
-  data->uid = g_strdup (uid);
-  data->sessionToken = g_strdup (sessionToken);
-  data->keyFetchToken = g_strdup (keyFetchToken);
-  data->unwrapBKey = g_strdup (unwrapBKey);
-  data->tokenID = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (data->tokenID, tokenID, EPHY_SYNC_TOKEN_LENGTH);
-  data->reqHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (data->reqHMACkey, reqHMACkey, EPHY_SYNC_TOKEN_LENGTH);
-  data->respHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (data->respHMACkey, respHMACkey, EPHY_SYNC_TOKEN_LENGTH);
-  data->respXORkey = g_malloc (2 * EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (data->respXORkey, respXORkey, 2 * EPHY_SYNC_TOKEN_LENGTH);
-
-  return data;
-}
-
-static void
-fxa_callback_data_free (FxACallbackData *data)
-{
-  g_assert (data != NULL);
-
-  g_object_unref (data->dialog);
-  g_free (data->email);
-  g_free (data->uid);
-  g_free (data->sessionToken);
-  g_free (data->keyFetchToken);
-  g_free (data->unwrapBKey);
-  g_free (data->tokenID);
-  g_free (data->reqHMACkey);
-  g_free (data->respHMACkey);
-  g_free (data->respXORkey);
-
-  g_slice_free (FxACallbackData, data);
-}
-#endif
 
 static void
 prefs_dialog_finalize (GObject *object)
@@ -231,17 +161,31 @@ prefs_dialog_finalize (GObject *object)
     webkit_user_script_unref (dialog->fxa_script);
     g_object_unref (dialog->fxa_manager);
   }
-
-  if (dialog->fxa_source_id != 0) {
-    g_source_remove (dialog->fxa_source_id);
-    dialog->fxa_source_id = 0;
-  }
 #endif
 
   G_OBJECT_CLASS (prefs_dialog_parent_class)->finalize (object);
 }
 
 #ifdef ENABLE_SYNC
+static void
+sync_sign_in_error_cb (EphySyncService *service,
+                       const char      *error,
+                       PrefsDialog     *dialog)
+{
+  char *message;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (service));
+  g_assert (EPHY_IS_PREFS_DIALOG (dialog));
+
+  /* Display the error message to the user. */
+  message = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>", error);
+  gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), message);
+  gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
+  webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
+
+  g_free (message);
+}
+
 static void
 hide_fxa_iframe (PrefsDialog *dialog,
                  const char  *email)
@@ -297,33 +241,6 @@ sync_tokens_store_finished_cb (EphySyncService *service,
 
     g_free (message);
   }
-}
-
-static gboolean
-poll_fxa_server (gpointer user_data)
-{
-  FxACallbackData *data;
-  EphySyncService *service;
-  char *bundle;
-
-  data = (FxACallbackData *)user_data;
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-  bundle = ephy_sync_service_start_sign_in (service, data->tokenID, data->reqHMACkey);
-
-  if (bundle != NULL) {
-    ephy_sync_service_finish_sign_in (service, data->email, data->uid,
-                                      data->sessionToken, data->keyFetchToken,
-                                      data->unwrapBKey, bundle,
-                                      data->respHMACkey, data->respXORkey);
-
-    g_free (bundle);
-    data->dialog->fxa_source_id = 0;
-    fxa_callback_data_free (data);
-
-    return G_SOURCE_REMOVE;
-  }
-
-  return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -384,7 +301,6 @@ server_message_received_cb (WebKitUserContentManager *manager,
 
   if (g_strcmp0 (command, "loaded") == 0) {
     LOG ("Loaded Firefox Sign In iframe");
-    gtk_widget_set_visible (dialog->sync_sign_in_details, FALSE);
   } else if (g_strcmp0 (command, "can_link_account") == 0) {
     /* We need to confirm a relink. */
     inject_data_to_server (dialog, "message", "can_link_account", "{'ok': true}");
@@ -395,12 +311,9 @@ server_message_received_cb (WebKitUserContentManager *manager,
     const char *sessionToken = json_object_get_string_member (data, "sessionToken");
     const char *keyFetchToken = json_object_get_string_member (data, "keyFetchToken");
     const char *unwrapBKey = json_object_get_string_member (data, "unwrapBKey");
-    guint8 *tokenID;
-    guint8 *reqHMACkey;
-    guint8 *respHMACkey;
-    guint8 *respXORkey;
     char *text;
 
+    gtk_widget_set_visible (dialog->sync_sign_in_details, FALSE);
     inject_data_to_server (dialog, "message", "login", NULL);
 
     /* Cannot retrieve the sync keys without keyFetchToken or unwrapBKey. */
@@ -419,40 +332,15 @@ server_message_received_cb (WebKitUserContentManager *manager,
       goto out;
     }
 
-    /* Derive tokenID, reqHMACkey, respHMACkey and respXORkey from the keyFetchToken.
-     * tokenID and reqHMACkey are used to make a HAWK request to the "GET /account/keys"
-     * API. The server looks up the stored table entry with tokenID, checks the request
-     * HMAC for validity, then returns the pre-encrypted response.
-     * See https://github.com/mozilla/fxa-auth-server/wiki/onepw-protocol#fetching-sync-keys */
-    ephy_sync_crypto_process_key_fetch_token (keyFetchToken,
-                                              &tokenID, &reqHMACkey,
-                                              &respHMACkey, &respXORkey);
-
-    /* If the account is not verified, then poll the server repeatedly
-     * until the verification has finished. */
     if (json_object_get_boolean_member (data, "verified") == FALSE) {
-      FxACallbackData *cb_data;
-
       text = g_strdup_printf ("<span fgcolor='#e6780b'>%s</span>",
                               _("Please don’t leave this page until you have completed the verification."));
       gtk_label_set_markup (GTK_LABEL (dialog->sync_sign_in_details), text);
       gtk_widget_set_visible (dialog->sync_sign_in_details, TRUE);
-
-      cb_data = fxa_callback_data_new (dialog, email, uid, sessionToken,
-                                       keyFetchToken, unwrapBKey, tokenID,
-                                       reqHMACkey, respHMACkey, respXORkey);
-      dialog->fxa_source_id = g_timeout_add_seconds (2, (GSourceFunc)poll_fxa_server, cb_data);
-
-      g_free (text);
-    } else {
-      char *bundle;
-
-      bundle = ephy_sync_service_start_sign_in (service, tokenID, reqHMACkey);
-      ephy_sync_service_finish_sign_in (service, email, uid, sessionToken, keyFetchToken,
-                                        unwrapBKey, bundle, respHMACkey, respXORkey);
-
-      g_free (bundle);
     }
+
+    ephy_sync_service_do_sign_in (service, email, uid,
+                                  sessionToken, keyFetchToken, unwrapBKey);
   } else if (g_strcmp0 (command, "session_status") == 0) {
     /* We are not signed in at this time, which we signal by returning an error. */
     inject_data_to_server (dialog, "message", "error", NULL);
@@ -1661,6 +1549,9 @@ setup_sync_page (PrefsDialog *dialog)
 
   g_signal_connect_object (service, "sync-tokens-store-finished",
                            G_CALLBACK (sync_tokens_store_finished_cb),
+                           dialog, 0);
+  g_signal_connect_object (service, "sync-sign-in-error",
+                           G_CALLBACK (sync_sign_in_error_cb),
                            dialog, 0);
 }
 #endif
