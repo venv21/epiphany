@@ -211,41 +211,27 @@ store_tokens_cb (SecretService *service,
 }
 
 void
-ephy_sync_secret_store_tokens (EphySyncService *service,
-                               const char      *email,
-                               const char      *uid,
-                               const char      *sessionToken,
-                               const char      *keyFetchToken,
-                               const char      *unwrapBKey,
-                               const char      *kA,
-                               const char      *kB)
+ephy_sync_secret_store_tokens (EphySyncService *service)
 {
   SecretValue *value;
   GHashTable *attributes;
   char *tokens;
   char *label;
 
-  g_return_if_fail (email);
-  g_return_if_fail (uid);
-  g_return_if_fail (sessionToken);
-  g_return_if_fail (keyFetchToken);
-  g_return_if_fail (unwrapBKey);
-  g_return_if_fail (kA);
-  g_return_if_fail (kB);
-
-  tokens = ephy_sync_utils_build_json_string ("uid", uid,
-                                              "sessionToken", sessionToken,
-                                              "keyFetchToken", keyFetchToken,
-                                              "unwrapBKey", unwrapBKey,
-                                              "kA", kA,
-                                              "kB", kB,
+  tokens = ephy_sync_utils_build_json_string ("uid", ephy_sync_service_get_token (service, TOKEN_UID),
+                                              "sessionToken", ephy_sync_service_get_token (service, TOKEN_SESSIONTOKEN),
+                                              "keyFetchToken", ephy_sync_service_get_token (service, TOKEN_KEYFETCHTOKEN),
+                                              "unwrapBKey", ephy_sync_service_get_token (service, TOKEN_UNWRAPBKEY),
+                                              "kA", ephy_sync_service_get_token (service, TOKEN_KA),
+                                              "kB", ephy_sync_service_get_token (service, TOKEN_KB),
                                               NULL);
   value = secret_value_new (tokens, -1, "text/plain");
-  attributes = secret_attributes_build (EPHY_SYNC_TOKEN_SCHEMA,
-                                        EMAIL_KEY, email,
+  attributes = secret_attributes_build (EPHY_SYNC_TOKEN_SCHEMA, EMAIL_KEY,
+                                        ephy_sync_service_get_user_email (service),
                                         NULL);
   /* Translators: The %s represents the email of the user. */
-  label = g_strdup_printf (_("The sync tokens of %s"), email);
+  label = g_strdup_printf (_("The sync tokens of %s"),
+                           ephy_sync_service_get_user_email (service));
 
   secret_service_store (NULL, EPHY_SYNC_TOKEN_SCHEMA, attributes,
                         NULL, label, value, NULL,

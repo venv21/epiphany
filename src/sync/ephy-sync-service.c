@@ -937,9 +937,7 @@ check_storage_version_cb (SoupSession *session,
   storage_version = json_object_get_int_member (json, "storageVersion");
 
   if (storage_version == STORAGE_VERSION) {
-    ephy_sync_secret_store_tokens (service, service->user_email, service->uid,
-                                   service->sessionToken, service->keyFetchToken,
-                                   service->unwrapBKey, service->kA, service->kB);
+    ephy_sync_secret_store_tokens (service);
   } else {
     /* Translators: the %d is the storage version, the \n is a newline character. */
     char *message = g_strdup_printf (_("Your Firefox Account uses a storage version "
