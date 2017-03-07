@@ -231,6 +231,7 @@ sync_tokens_store_finished_cb (EphySyncService *service,
 
     /* Unset the email and tokens. */
     g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+    ephy_sync_service_set_user_email (service, NULL);
     ephy_sync_service_clear_tokens (service);
 
     /* Display the error message to the user. */
