@@ -85,7 +85,7 @@ static guint signals[LAST_SIGNAL];
 typedef struct {
   EphySyncService     *service;
   char                *endpoint;
-  const char          *method;
+  char                *method;
   char                *request_body;
   double               modified_since;
   double               unmodified_since;
@@ -108,9 +108,9 @@ typedef struct {
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
 
 static StorageRequestAsyncData *
-storage_server_request_async_data_new (char                *endpoint,
+storage_server_request_async_data_new (const char          *endpoint,
                                        const char          *method,
-                                       char                *request_body,
+                                       const char          *request_body,
                                        double               modified_since,
                                        double               unmodified_since,
                                        SoupSessionCallback  callback,
@@ -120,7 +120,7 @@ storage_server_request_async_data_new (char                *endpoint,
 
   data = g_slice_new (StorageRequestAsyncData);
   data->endpoint = g_strdup (endpoint);
-  data->method = method;
+  data->method = g_strdup (method);
   data->request_body = g_strdup (request_body);
   data->modified_since = modified_since;
   data->unmodified_since = unmodified_since;
@@ -136,6 +136,7 @@ storage_server_request_async_data_free (StorageRequestAsyncData *data)
   g_assert (data);
 
   g_free (data->endpoint);
+  g_free (data->method);
   g_free (data->request_body);
   g_slice_free (StorageRequestAsyncData, data);
 }
@@ -588,9 +589,9 @@ ephy_sync_service_send_next_storage_request (EphySyncService *self)
 
 static void
 ephy_sync_service_queue_storage_request (EphySyncService     *self,
-                                         char                *endpoint,
+                                         const char          *endpoint,
                                          const char          *method,
-                                         char                *request_body,
+                                         const char          *request_body,
                                          double               modified_since,
                                          double               unmodified_since,
                                          SoupSessionCallback  callback,
