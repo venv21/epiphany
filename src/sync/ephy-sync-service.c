@@ -83,7 +83,6 @@ enum {
 static guint signals[LAST_SIGNAL];
 
 typedef struct {
-  EphySyncService     *service;
   char                *endpoint;
   char                *method;
   char                *request_body;
