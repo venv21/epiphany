@@ -119,6 +119,14 @@ guint8                 *ephy_sync_crypto_aes_256                  (SyncCryptoAES
                                                                    const guint8           *data,
                                                                    gsize                   data_len,
                                                                    gsize                  *out_len);
+guint8                 *ephy_sync_crypto_aes_256_encrypt          (const char             *text,
+                                                                   const guint8           *key,
+                                                                   const guint8           *iv,
+                                                                   gsize                  *out_len);
+char                   *ephy_sync_crypto_aes_256_decrypt          (const guint8           *data,
+                                                                   gsize                   data_len,
+                                                                   const guint8           *key,
+                                                                   const guint8           *iv);
 char                   *ephy_sync_crypto_encode_hex               (guint8                 *data,
                                                                    gsize                   data_len);
 guint8                 *ephy_sync_crypto_decode_hex               (const char             *hex);
