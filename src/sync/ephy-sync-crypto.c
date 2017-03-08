@@ -34,7 +34,7 @@
 
 static const char hex_digits[] = "0123456789abcdef";
 
-EphySyncCryptoHawkOptions *
+SyncCryptoHawkOptions *
 ephy_sync_crypto_hawk_options_new (const char *app,
                                    const char *dlg,
                                    const char *ext,
@@ -45,9 +45,9 @@ ephy_sync_crypto_hawk_options_new (const char *app,
                                    const char *payload,
                                    const char *timestamp)
 {
-  EphySyncCryptoHawkOptions *options;
+  SyncCryptoHawkOptions *options;
 
-  options = g_slice_new (EphySyncCryptoHawkOptions);
+  options = g_slice_new (SyncCryptoHawkOptions);
   options->app = g_strdup (app);
   options->dlg = g_strdup (dlg);
   options->ext = g_strdup (ext);
@@ -62,7 +62,7 @@ ephy_sync_crypto_hawk_options_new (const char *app,
 }
 
 void
-ephy_sync_crypto_hawk_options_free (EphySyncCryptoHawkOptions *options)
+ephy_sync_crypto_hawk_options_free (SyncCryptoHawkOptions *options)
 {
   g_return_if_fail (options);
 
@@ -76,10 +76,10 @@ ephy_sync_crypto_hawk_options_free (EphySyncCryptoHawkOptions *options)
   g_free (options->payload);
   g_free (options->timestamp);
 
-  g_slice_free (EphySyncCryptoHawkOptions, options);
+  g_slice_free (SyncCryptoHawkOptions, options);
 }
 
-static EphySyncCryptoHawkArtifacts *
+static SyncCryptoHawkArtifacts *
 ephy_sync_crypto_hawk_artifacts_new (const char *app,
                                      const char *dlg,
                                      const char *ext,
@@ -91,9 +91,9 @@ ephy_sync_crypto_hawk_artifacts_new (const char *app,
                                      const char *resource,
                                      gint64      ts)
 {
-  EphySyncCryptoHawkArtifacts *artifacts;
+  SyncCryptoHawkArtifacts *artifacts;
 
-  artifacts = g_slice_new (EphySyncCryptoHawkArtifacts);
+  artifacts = g_slice_new (SyncCryptoHawkArtifacts);
   artifacts->app = g_strdup (app);
   artifacts->dlg = g_strdup (dlg);
   artifacts->ext = g_strdup (ext);
@@ -109,7 +109,7 @@ ephy_sync_crypto_hawk_artifacts_new (const char *app,
 }
 
 static void
-ephy_sync_crypto_hawk_artifacts_free (EphySyncCryptoHawkArtifacts *artifacts)
+ephy_sync_crypto_hawk_artifacts_free (SyncCryptoHawkArtifacts *artifacts)
 {
   g_assert (artifacts);
 
@@ -124,16 +124,16 @@ ephy_sync_crypto_hawk_artifacts_free (EphySyncCryptoHawkArtifacts *artifacts)
   g_free (artifacts->resource);
   g_free (artifacts->ts);
 
-  g_slice_free (EphySyncCryptoHawkArtifacts, artifacts);
+  g_slice_free (SyncCryptoHawkArtifacts, artifacts);
 }
 
-static EphySyncCryptoHawkHeader *
-ephy_sync_crypto_hawk_header_new (char                        *header,
-                                  EphySyncCryptoHawkArtifacts *artifacts)
+static SyncCryptoHawkHeader *
+ephy_sync_crypto_hawk_header_new (char                    *header,
+                                  SyncCryptoHawkArtifacts *artifacts)
 {
-  EphySyncCryptoHawkHeader *hheader;
+  SyncCryptoHawkHeader *hheader;
 
-  hheader = g_slice_new (EphySyncCryptoHawkHeader);
+  hheader = g_slice_new (SyncCryptoHawkHeader);
   hheader->header = header;
   hheader->artifacts = artifacts;
 
@@ -141,23 +141,23 @@ ephy_sync_crypto_hawk_header_new (char                        *header,
 }
 
 void
-ephy_sync_crypto_hawk_header_free (EphySyncCryptoHawkHeader *hheader)
+ephy_sync_crypto_hawk_header_free (SyncCryptoHawkHeader *hheader)
 {
   g_return_if_fail (hheader);
 
   g_free (hheader->header);
   ephy_sync_crypto_hawk_artifacts_free (hheader->artifacts);
 
-  g_slice_free (EphySyncCryptoHawkHeader, hheader);
+  g_slice_free (SyncCryptoHawkHeader, hheader);
 }
 
-static EphySyncCryptoRSAKeyPair *
+static SyncCryptoRSAKeyPair *
 ephy_sync_crypto_rsa_key_pair_new (struct rsa_public_key  public,
                                    struct rsa_private_key private)
 {
-  EphySyncCryptoRSAKeyPair *keypair;
+  SyncCryptoRSAKeyPair *keypair;
 
-  keypair = g_slice_new (EphySyncCryptoRSAKeyPair);
+  keypair = g_slice_new (SyncCryptoRSAKeyPair);
   keypair->public = public;
   keypair->private = private;
 
@@ -165,14 +165,14 @@ ephy_sync_crypto_rsa_key_pair_new (struct rsa_public_key  public,
 }
 
 void
-ephy_sync_crypto_rsa_key_pair_free (EphySyncCryptoRSAKeyPair *keypair)
+ephy_sync_crypto_rsa_key_pair_free (SyncCryptoRSAKeyPair *keypair)
 {
   g_return_if_fail (keypair);
 
   rsa_public_key_clear (&keypair->public);
   rsa_private_key_clear (&keypair->private);
 
-  g_slice_free (EphySyncCryptoRSAKeyPair, keypair);
+  g_slice_free (SyncCryptoRSAKeyPair, keypair);
 }
 
 static char *
@@ -219,8 +219,8 @@ ephy_sync_crypto_equals (guint8 *a,
 }
 
 static char *
-ephy_sync_crypto_normalize_string (const char                  *type,
-                                   EphySyncCryptoHawkArtifacts *artifacts)
+ephy_sync_crypto_normalize_string (const char              *type,
+                                   SyncCryptoHawkArtifacts *artifacts)
 {
   char *host;
   char *info;
@@ -311,10 +311,10 @@ ephy_sync_crypto_calculate_payload_hash (const char *payload,
 }
 
 static char *
-ephy_sync_crypto_calculate_mac (const char                  *type,
-                                guint8                      *key,
-                                gsize                        key_len,
-                                EphySyncCryptoHawkArtifacts *artifacts)
+ephy_sync_crypto_calculate_mac (const char              *type,
+                                guint8                  *key,
+                                gsize                    key_len,
+                                SyncCryptoHawkArtifacts *artifacts)
 {
   guint8 *digest;
   char *digest_hex;
@@ -602,15 +602,15 @@ ephy_sync_crypto_compute_sync_keys (const char  *bundle,
   g_free (respMAC2_hex);
 }
 
-EphySyncCryptoHawkHeader *
-ephy_sync_crypto_compute_hawk_header (const char                *url,
-                                      const char                *method,
-                                      const char                *id,
-                                      guint8                    *key,
-                                      gsize                      key_len,
-                                      EphySyncCryptoHawkOptions *options)
+SyncCryptoHawkHeader *
+ephy_sync_crypto_compute_hawk_header (const char            *url,
+                                      const char            *method,
+                                      const char            *id,
+                                      guint8                *key,
+                                      gsize                  key_len,
+                                      SyncCryptoHawkOptions *options)
 {
-  EphySyncCryptoHawkArtifacts *artifacts;
+  SyncCryptoHawkArtifacts *artifacts;
   SoupURI *uri;
   char *resource;
   char *hash;
@@ -716,7 +716,7 @@ ephy_sync_crypto_compute_hawk_header (const char                *url,
   return ephy_sync_crypto_hawk_header_new (header, artifacts);
 }
 
-EphySyncCryptoRSAKeyPair *
+SyncCryptoRSAKeyPair *
 ephy_sync_crypto_generate_rsa_key_pair (void)
 {
   struct rsa_public_key public;
@@ -744,10 +744,10 @@ ephy_sync_crypto_generate_rsa_key_pair (void)
 }
 
 char *
-ephy_sync_crypto_create_assertion (const char               *certificate,
-                                   const char               *audience,
-                                   guint64                   duration,
-                                   EphySyncCryptoRSAKeyPair *keypair)
+ephy_sync_crypto_create_assertion (const char           *certificate,
+                                   const char           *audience,
+                                   guint64               duration,
+                                   SyncCryptoRSAKeyPair *keypair)
 {
   mpz_t signature;
   const char *header = "{\"alg\": \"RS256\"}";
@@ -900,11 +900,11 @@ ephy_sync_crypto_base64_urlsafe_decode (const char  *text,
 }
 
 guint8 *
-ephy_sync_crypto_aes_256 (EphySyncCryptoAES256Mode  mode,
-                          const guint8             *key,
-                          const guint8             *data,
-                          gsize                     data_len,
-                          gsize                    *out_len)
+ephy_sync_crypto_aes_256 (SyncCryptoAES256Mode  mode,
+                          const guint8         *key,
+                          const guint8         *data,
+                          gsize                 data_len,
+                          gsize                *out_len)
 {
   struct aes256_ctx aes;
   gsize padded_len = data_len;

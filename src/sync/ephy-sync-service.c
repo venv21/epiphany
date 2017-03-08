@@ -67,8 +67,8 @@ struct _EphySyncService {
   gint64       storage_credentials_expiry_time;
   GQueue      *storage_queue;
 
-  char                     *certificate;
-  EphySyncCryptoRSAKeyPair *keypair;
+  char                 *certificate;
+  SyncCryptoRSAKeyPair *keypair;
 };
 
 G_DEFINE_TYPE (EphySyncService, ephy_sync_service, G_TYPE_OBJECT);
@@ -213,8 +213,8 @@ ephy_sync_service_fxa_hawk_post_async (EphySyncService     *self,
                                        SoupSessionCallback  callback,
                                        gpointer             user_data)
 {
-  EphySyncCryptoHawkOptions *hoptions;
-  EphySyncCryptoHawkHeader *hheader;
+  SyncCryptoHawkOptions *hoptions;
+  SyncCryptoHawkHeader *hheader;
   SoupMessage *msg;
   char *url;
   const char *content_type = "application/json";
@@ -251,7 +251,7 @@ ephy_sync_service_fxa_hawk_get_async (EphySyncService     *self,
                                       SoupSessionCallback  callback,
                                       gpointer             user_data)
 {
-  EphySyncCryptoHawkHeader *hheader;
+  SyncCryptoHawkHeader *hheader;
   SoupMessage *msg;
   char *url;
 
@@ -513,8 +513,8 @@ static void
 ephy_sync_service_send_storage_request (EphySyncService         *self,
                                         StorageRequestAsyncData *data)
 {
-  EphySyncCryptoHawkOptions *hoptions = NULL;
-  EphySyncCryptoHawkHeader *hheader;
+  SyncCryptoHawkOptions *hoptions = NULL;
+  SyncCryptoHawkHeader *hheader;
   SoupMessage *msg;
   char *url;
   char *if_modified_since = NULL;
@@ -864,8 +864,8 @@ void
 ephy_sync_service_destroy_session (EphySyncService *self,
                                    const char      *sessionToken)
 {
-  EphySyncCryptoHawkOptions *hoptions;
-  EphySyncCryptoHawkHeader *hheader;
+  SyncCryptoHawkOptions *hoptions;
+  SyncCryptoHawkHeader *hheader;
   SoupMessage *msg;
   guint8 *tokenID;
   guint8 *reqHMACkey;
