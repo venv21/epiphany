@@ -156,34 +156,6 @@ ephy_sync_utils_find_and_replace (const char *src,
   return out;
 }
 
-guint8 *
-ephy_sync_utils_concatenate_bytes (const guint8 *bytes,
-                                   gsize         bytes_len,
-                                   ...)
-{
-  va_list args;
-  guint8 *next;
-  guint8 *out;
-  gsize next_len;
-  gsize out_len;
-
-  out_len = bytes_len;
-  out = g_malloc (out_len);
-  memcpy (out, bytes, out_len);
-
-  va_start (args, bytes_len);
-  while ((next = va_arg (args, guint8 *)) != NULL) {
-    next_len = va_arg (args, gsize);
-    out = g_realloc (out, out_len + next_len);
-    memcpy (out + out_len, next, next_len);
-    out_len += next_len;
-  }
-
-  va_end (args);
-
-  return out;
-}
-
 gint64
 ephy_sync_utils_current_time_seconds (void)
 {

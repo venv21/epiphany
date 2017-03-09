@@ -358,6 +358,34 @@ ephy_sync_crypto_append_to_header (char       *header,
   return new_header;
 }
 
+static guint8 *
+ephy_sync_crypto_concat_bytes (const guint8 *bytes,
+                               gsize         bytes_len,
+                               ...)
+{
+  va_list args;
+  guint8 *next;
+  guint8 *out;
+  gsize next_len;
+  gsize out_len;
+
+  out_len = bytes_len;
+  out = g_malloc (out_len);
+  memcpy (out, bytes, out_len);
+
+  va_start (args, bytes_len);
+  while ((next = va_arg (args, guint8 *)) != NULL) {
+    next_len = va_arg (args, gsize);
+    out = g_realloc (out, out_len + next_len);
+    memcpy (out + out_len, next, next_len);
+    out_len += next_len;
+  }
+
+  va_end (args);
+
+  return out;
+}
+
 static void
 ephy_sync_crypto_hkdf (const guint8 *in,
                        gsize         in_len,
@@ -406,12 +434,12 @@ ephy_sync_crypto_hkdf (const guint8 *in,
 
   for (gsize i = 0; i < n; i++, counter++) {
     if (i == 0) {
-      data = ephy_sync_utils_concatenate_bytes (info, info_len, &counter, 1, NULL);
+      data = ephy_sync_crypto_concat_bytes (info, info_len, &counter, 1, NULL);
       data_len = info_len + 1;
     } else {
-      data = ephy_sync_utils_concatenate_bytes (out_full + (i - 1) * hash_len, hash_len,
-                                                info, info_len, &counter, 1,
-                                                NULL);
+      data = ephy_sync_crypto_concat_bytes (out_full + (i - 1) * hash_len, hash_len,
+                                            info, info_len, &counter, 1,
+                                            NULL);
       data_len = hash_len + info_len + 1;
     }
 
@@ -731,18 +759,18 @@ ephy_sync_crypto_derive_master_keys (const guint8  *kB,
                                      salt, EPHY_SYNC_TOKEN_LENGTH,
                                      kB, EPHY_SYNC_TOKEN_LENGTH);
   prk = ephy_sync_crypto_decode_hex (prk_hex);
-  tmp = ephy_sync_utils_concatenate_bytes ((guint8 *)info, strlen (info),
-                                           "\x01", 1,
-                                           NULL);
+  tmp = ephy_sync_crypto_concat_bytes ((guint8 *)info, strlen (info),
+                                       "\x01", 1,
+                                       NULL);
   aes_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
                                          prk, EPHY_SYNC_TOKEN_LENGTH,
                                          tmp, strlen (info) + 1);
   *aes_key = ephy_sync_crypto_decode_hex (aes_key_hex);
   g_free (tmp);
-  tmp = ephy_sync_utils_concatenate_bytes (*aes_key, EPHY_SYNC_TOKEN_LENGTH,
-                                           (guint8 *)info, strlen (info),
-                                           "\x02", 1,
-                                           NULL);
+  tmp = ephy_sync_crypto_concat_bytes (*aes_key, EPHY_SYNC_TOKEN_LENGTH,
+                                       (guint8 *)info, strlen (info),
+                                       "\x02", 1,
+                                       NULL);
   hmac_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
                                           prk, EPHY_SYNC_TOKEN_LENGTH,
                                           tmp, EPHY_SYNC_TOKEN_LENGTH + strlen (info) + 1);

@@ -43,9 +43,6 @@ EphySyncTokenType   ephy_sync_utils_token_type_from_name  (const char        *na
 char               *ephy_sync_utils_find_and_replace      (const char        *src,
                                                            const char        *find,
                                                            const char        *repl);
-guint8             *ephy_sync_utils_concatenate_bytes     (const guint8      *bytes,
-                                                           gsize              bytes_len,
-                                                           ...) G_GNUC_NULL_TERMINATED;
 gint64              ephy_sync_utils_current_time_seconds  (void);
 
 G_END_DECLS
