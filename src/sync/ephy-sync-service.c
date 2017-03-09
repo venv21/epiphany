@@ -307,7 +307,9 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   json = json_node_get_object (json_parser_get_root (parser));
   principal = json_object_get_object_member (json, "principal");
   email = json_object_get_string_member (principal, "email");
-  uid_email = g_strdup_printf ("%s@%s", self->uid, soup_uri_get_host (uri));
+  uid_email = g_strdup_printf ("%s@%s",
+                               ephy_sync_service_get_token (self, TOKEN_UID),
+                               soup_uri_get_host (uri));
 
   if (g_strcmp0 (uid_email, email)) {
     g_warning ("Expected email %s, found %s. Giving up.", uid_email, email);
@@ -382,7 +384,7 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
                                                  ASSERTION_DURATION, self->keypair);
   g_assert (assertion);
 
-  kB = ephy_sync_crypto_decode_hex (self->kB);
+  kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (self, TOKEN_KB));
   hashed_kB = g_compute_checksum_for_data (G_CHECKSUM_SHA256, kB, EPHY_SYNC_TOKEN_LENGTH);
   client_state = g_strndup (hashed_kB, EPHY_SYNC_TOKEN_LENGTH);
   authorization = g_strdup_printf ("BrowserID %s", assertion);
@@ -472,7 +474,6 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
   char *e;
 
   g_assert (EPHY_IS_SYNC_SERVICE (self));
-  g_assert (self->sessionToken);
 
   /* Generate a new RSA key pair that is going to be used to sign the new certificate. */
   if (self->keypair)
@@ -482,7 +483,8 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
   g_assert (self->keypair);
 
   /* Derive tokenID, reqHMACkey and requestKey from the sessionToken. */
-  ephy_sync_crypto_process_session_token (self->sessionToken, &tokenID, &reqHMACkey, &requestKey);
+  ephy_sync_crypto_process_session_token (ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN),
+                                          &tokenID, &reqHMACkey, &requestKey);
   tokenID_hex = ephy_sync_crypto_encode_hex (tokenID, 0);
 
   n = mpz_get_str (NULL, 10, self->keypair->public.n);
