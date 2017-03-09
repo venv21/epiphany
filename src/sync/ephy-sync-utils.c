@@ -157,8 +157,8 @@ ephy_sync_utils_find_and_replace (const char *src,
 }
 
 guint8 *
-ephy_sync_utils_concatenate_bytes (guint8 *bytes,
-                                   gsize   bytes_len,
+ephy_sync_utils_concatenate_bytes (const guint8 *bytes,
+                                   gsize         bytes_len,
                                    ...)
 {
   va_list args;

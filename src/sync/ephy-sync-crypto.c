@@ -129,13 +129,13 @@ ephy_sync_crypto_hawk_artifacts_free (SyncCryptoHawkArtifacts *artifacts)
 }
 
 static SyncCryptoHawkHeader *
-ephy_sync_crypto_hawk_header_new (char                    *header,
+ephy_sync_crypto_hawk_header_new (const char              *header,
                                   SyncCryptoHawkArtifacts *artifacts)
 {
   SyncCryptoHawkHeader *hheader;
 
   hheader = g_slice_new (SyncCryptoHawkHeader);
-  hheader->header = header;
+  hheader->header = g_strdup (header);
   hheader->artifacts = artifacts;
 
   return hheader;
@@ -188,9 +188,9 @@ ephy_sync_crypto_kw (const char *name)
 }
 
 static guint8 *
-ephy_sync_crypto_xor (guint8 *a,
-                      guint8 *b,
-                      gsize   length)
+ephy_sync_crypto_xor (const guint8 *a,
+                      const guint8 *b,
+                      gsize         length)
 {
   guint8 *xored;
 
@@ -205,9 +205,9 @@ ephy_sync_crypto_xor (guint8 *a,
 }
 
 static gboolean
-ephy_sync_crypto_equals (guint8 *a,
-                         guint8 *b,
-                         gsize   length)
+ephy_sync_crypto_equals (const guint8 *a,
+                         const guint8 *b,
+                         gsize         length)
 {
   g_assert (a);
   g_assert (b);
@@ -313,7 +313,7 @@ ephy_sync_crypto_calculate_payload_hash (const char *payload,
 
 static char *
 ephy_sync_crypto_calculate_mac (const char              *type,
-                                guint8                  *key,
+                                const guint8            *key,
                                 gsize                    key_len,
                                 SyncCryptoHawkArtifacts *artifacts)
 {
@@ -342,7 +342,7 @@ ephy_sync_crypto_calculate_mac (const char              *type,
 static char *
 ephy_sync_crypto_append_to_header (char       *header,
                                    const char *name,
-                                   char       *value)
+                                   const char *value)
 {
   char *new_header;
   char *tmp;
@@ -359,14 +359,14 @@ ephy_sync_crypto_append_to_header (char       *header,
 }
 
 static void
-ephy_sync_crypto_hkdf (guint8 *in,
-                       gsize   in_len,
-                       guint8 *salt,
-                       gsize   salt_len,
-                       guint8 *info,
-                       gsize   info_len,
-                       guint8 *out,
-                       gsize   out_len)
+ephy_sync_crypto_hkdf (const guint8 *in,
+                       gsize         in_len,
+                       guint8       *salt,
+                       gsize         salt_len,
+                       const guint8 *info,
+                       gsize         info_len,
+                       guint8       *out,
+                       gsize         out_len)
 {
   char *prk_hex;
   char *tmp_hex;
@@ -651,12 +651,12 @@ ephy_sync_crypto_process_session_token (const char  *sessionToken,
 }
 
 void
-ephy_sync_crypto_compute_sync_keys (const char  *bundle,
-                                    guint8      *respHMACkey,
-                                    guint8      *respXORkey,
-                                    guint8      *unwrapBKey,
-                                    guint8     **kA,
-                                    guint8     **kB)
+ephy_sync_crypto_compute_sync_keys (const char    *bundle,
+                                    const guint8  *respHMACkey,
+                                    const guint8  *respXORkey,
+                                    const guint8  *unwrapBKey,
+                                    guint8       **kA,
+                                    guint8       **kB)
 {
   guint8 *bdl;
   guint8 *ciphertext;
@@ -805,10 +805,11 @@ SyncCryptoHawkHeader *
 ephy_sync_crypto_compute_hawk_header (const char            *url,
                                       const char            *method,
                                       const char            *id,
-                                      guint8                *key,
+                                      const guint8          *key,
                                       gsize                  key_len,
                                       SyncCryptoHawkOptions *options)
 {
+  SyncCryptoHawkHeader *hheader;
   SyncCryptoHawkArtifacts *artifacts;
   SoupURI *uri;
   char *resource;
@@ -906,13 +907,16 @@ ephy_sync_crypto_compute_hawk_header (const char            *url,
       header = ephy_sync_crypto_append_to_header (header, "dlg", artifacts->dlg);
   }
 
+  hheader = ephy_sync_crypto_hawk_header_new (header, artifacts);
+
   soup_uri_free (uri);
   g_free (hash);
   g_free (mac);
   g_free (nonce);
   g_free (resource);
+  g_free (header);
 
-  return ephy_sync_crypto_hawk_header_new (header, artifacts);
+  return hheader;
 }
 
 SyncCryptoRSAKeyPair *
@@ -1041,9 +1045,9 @@ ephy_sync_crypto_random_hex_gen (void   *ctx,
 }
 
 char *
-ephy_sync_crypto_base64_urlsafe_encode (guint8   *data,
-                                        gsize     data_len,
-                                        gboolean  strip)
+ephy_sync_crypto_base64_urlsafe_encode (const guint8 *data,
+                                        gsize         data_len,
+                                        gboolean      strip)
 {
   char *base64;
   char *out;
@@ -1144,8 +1148,8 @@ ephy_sync_crypto_aes_256 (SyncCryptoAES256Mode  mode,
 }
 
 char *
-ephy_sync_crypto_encode_hex (guint8 *data,
-                             gsize   data_len)
+ephy_sync_crypto_encode_hex (const guint8 *data,
+                             gsize         data_len)
 {
   char *retval;
   gsize length;

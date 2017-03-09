@@ -90,7 +90,7 @@ load_tokens_cb (SecretService *service,
   GError *ret_error = NULL;
   const char *tokens;
   const char *email;
-  char *user_email;
+  const char *user_email;
 
   matches = secret_service_search_finish (service, result, &error);
 

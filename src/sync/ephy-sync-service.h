@@ -34,13 +34,13 @@ G_DECLARE_FINAL_TYPE (EphySyncService, ephy_sync_service, EPHY, SYNC_SERVICE, GO
 
 EphySyncService  *ephy_sync_service_new                        (void);
 gboolean          ephy_sync_service_is_signed_in               (EphySyncService   *self);
-char             *ephy_sync_service_get_user_email             (EphySyncService   *self);
+const char       *ephy_sync_service_get_user_email             (EphySyncService   *self);
 void              ephy_sync_service_set_user_email             (EphySyncService   *self,
                                                                 const char        *email);
 double            ephy_sync_service_get_sync_time              (EphySyncService   *self);
 void              ephy_sync_service_set_sync_time              (EphySyncService   *self,
                                                                 double             time);
-char             *ephy_sync_service_get_token                  (EphySyncService   *self,
+const char       *ephy_sync_service_get_token                  (EphySyncService   *self,
                                                                 EphySyncTokenType  type);
 void              ephy_sync_service_set_token                  (EphySyncService   *self,
                                                                 const char        *value,

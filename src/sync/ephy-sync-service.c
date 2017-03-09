@@ -705,7 +705,7 @@ ephy_sync_service_is_signed_in (EphySyncService *self)
   return self->user_email != NULL;
 }
 
-char *
+const char *
 ephy_sync_service_get_user_email (EphySyncService *self)
 {
   g_return_val_if_fail (EPHY_IS_SYNC_SERVICE (self), NULL);
@@ -746,7 +746,7 @@ ephy_sync_service_set_sync_time (EphySyncService *self,
   g_settings_set_double (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_TIME, time);
 }
 
-char *
+const char *
 ephy_sync_service_get_token (EphySyncService   *self,
                              EphySyncTokenType  type)
 {
