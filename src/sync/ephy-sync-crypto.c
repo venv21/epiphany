@@ -603,6 +603,56 @@ ephy_sync_crypto_compute_sync_keys (const char  *bundle,
   g_free (respMAC2_hex);
 }
 
+void
+ephy_sync_crypto_derive_master_keys (const guint8  *kB,
+                                     guint8       **aes_key,
+                                     guint8       **hmac_key)
+{
+  guint8 *salt;
+  guint8 *prk;
+  guint8 *tmp;
+  char *prk_hex;
+  char *aes_key_hex;
+  char *hmac_key_hex;
+  const char *info = "identity.mozilla.com/picl/v1/oldsync";
+
+  g_return_if_fail (kB);
+  g_return_if_fail (aes_key);
+  g_return_if_fail (hmac_key);
+
+  /* Perform a two step HKDF with an all-zeros salt.
+   * T(1) will represent the AES key, T(2) will represent the HMAC key. */
+
+  salt = g_malloc0 (EPHY_SYNC_TOKEN_LENGTH);
+  prk_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
+                                     salt, EPHY_SYNC_TOKEN_LENGTH,
+                                     kB, EPHY_SYNC_TOKEN_LENGTH);
+  prk = ephy_sync_crypto_decode_hex (prk_hex);
+  tmp = ephy_sync_utils_concatenate_bytes ((guint8 *)info, strlen (info),
+                                           "\x01", 1,
+                                           NULL);
+  aes_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
+                                         prk, EPHY_SYNC_TOKEN_LENGTH,
+                                         tmp, strlen (info) + 1);
+  *aes_key = ephy_sync_crypto_decode_hex (aes_key_hex);
+  g_free (tmp);
+  tmp = ephy_sync_utils_concatenate_bytes (*aes_key, EPHY_SYNC_TOKEN_LENGTH,
+                                           (guint8 *)info, strlen (info),
+                                           "\x02", 1,
+                                           NULL);
+  hmac_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
+                                          prk, EPHY_SYNC_TOKEN_LENGTH,
+                                          tmp, EPHY_SYNC_TOKEN_LENGTH + strlen (info) + 1);
+  *hmac_key = ephy_sync_crypto_decode_hex (hmac_key_hex);
+
+  g_free (salt);
+  g_free (prk_hex);
+  g_free (prk);
+  g_free (tmp);
+  g_free (aes_key_hex);
+  g_free (hmac_key_hex);
+}
+
 SyncCryptoHawkHeader *
 ephy_sync_crypto_compute_hawk_header (const char            *url,
                                       const char            *method,

@@ -94,6 +94,9 @@ void                    ephy_sync_crypto_compute_sync_keys        (const char   
                                                                    guint8                 *unwrapBKey,
                                                                    guint8                **kA,
                                                                    guint8                **kB);
+void                    ephy_sync_crypto_derive_master_keys       (const guint8           *kB,
+                                                                   guint8                **aes_key,
+                                                                   guint8                **hmac_key);
 SyncCryptoHawkHeader   *ephy_sync_crypto_compute_hawk_header      (const char             *url,
                                                                    const char             *method,
                                                                    const char             *id,
