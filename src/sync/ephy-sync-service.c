@@ -51,9 +51,6 @@ struct _EphySyncService {
 
   char        *uid;
   char        *sessionToken;
-  char        *keyFetchToken;
-  char        *unwrapBKey;
-  char        *kA;
   char        *kB;
   char        *default_aes_key;
   char        *default_hmac_key;
@@ -98,7 +95,6 @@ typedef struct {
   char   *email;
   char   *uid;
   char   *sessionToken;
-  char   *keyFetchToken;
   char   *unwrapBKey;
   char   *tokenID_hex;
   guint8 *reqHMACkey;
@@ -146,7 +142,6 @@ static SignInAsyncData *
 sign_in_async_data_new (const char   *email,
                         const char   *uid,
                         const char   *sessionToken,
-                        const char   *keyFetchToken,
                         const char   *unwrapBKey,
                         const char   *tokenID_hex,
                         const guint8 *reqHMACkey,
@@ -159,7 +154,6 @@ sign_in_async_data_new (const char   *email,
   data->email = g_strdup (email);
   data->uid = g_strdup (uid);
   data->sessionToken = g_strdup (sessionToken);
-  data->keyFetchToken = g_strdup (keyFetchToken);
   data->unwrapBKey = g_strdup (unwrapBKey);
   data->tokenID_hex = g_strdup (tokenID_hex);
   data->reqHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
@@ -180,7 +174,6 @@ sign_in_async_data_free (SignInAsyncData *data)
   g_free (data->email);
   g_free (data->uid);
   g_free (data->sessionToken);
-  g_free (data->keyFetchToken);
   g_free (data->unwrapBKey);
   g_free (data->tokenID_hex);
   g_free (data->reqHMACkey);
@@ -762,12 +755,6 @@ ephy_sync_service_get_token (EphySyncService   *self,
       return self->uid;
     case TOKEN_SESSIONTOKEN:
       return self->sessionToken;
-    case TOKEN_KEYFETCHTOKEN:
-      return self->keyFetchToken;
-    case TOKEN_UNWRAPBKEY:
-      return self->unwrapBKey;
-    case TOKEN_KA:
-      return self->kA;
     case TOKEN_KB:
       return self->kB;
     case TOKEN_DEFAULT_AES_KEY:
@@ -795,18 +782,6 @@ ephy_sync_service_set_token (EphySyncService   *self,
     case TOKEN_SESSIONTOKEN:
       g_free (self->sessionToken);
       self->sessionToken = g_strdup (value);
-      break;
-    case TOKEN_KEYFETCHTOKEN:
-      g_free (self->keyFetchToken);
-      self->keyFetchToken = g_strdup (value);
-      break;
-    case TOKEN_UNWRAPBKEY:
-      g_free (self->unwrapBKey);
-      self->unwrapBKey = g_strdup (value);
-      break;
-    case TOKEN_KA:
-      g_free (self->kA);
-      self->kA = g_strdup (value);
       break;
     case TOKEN_KB:
       g_free (self->kB);
@@ -844,9 +819,6 @@ ephy_sync_service_clear_tokens (EphySyncService *self)
 
   g_clear_pointer (&self->uid, g_free);
   g_clear_pointer (&self->sessionToken, g_free);
-  g_clear_pointer (&self->keyFetchToken, g_free);
-  g_clear_pointer (&self->unwrapBKey, g_free);
-  g_clear_pointer (&self->kA, g_free);
   g_clear_pointer (&self->kB, g_free);
   g_clear_pointer (&self->default_aes_key, g_free);
   g_clear_pointer (&self->default_hmac_key, g_free);
@@ -1104,7 +1076,6 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
   guint8 *unwrapKB;
   guint8 *kA;
   guint8 *kB;
-  char *kA_hex;
   char *kB_hex;
 
   g_assert (EPHY_IS_SYNC_SERVICE (self));
@@ -1116,7 +1087,6 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
   ephy_sync_crypto_compute_sync_keys (bundle, data->respHMACkey,
                                       data->respXORkey, unwrapKB,
                                       &kA, &kB);
-  kA_hex = ephy_sync_crypto_encode_hex (kA, 0);
   kB_hex = ephy_sync_crypto_encode_hex (kB, 0);
 
   /* Save the email and the tokens. */
@@ -1124,16 +1094,12 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
   ephy_sync_service_set_user_email (self, data->email);
   ephy_sync_service_set_token (self, data->uid, TOKEN_UID);
   ephy_sync_service_set_token (self, data->sessionToken, TOKEN_SESSIONTOKEN);
-  ephy_sync_service_set_token (self, data->keyFetchToken, TOKEN_KEYFETCHTOKEN);
-  ephy_sync_service_set_token (self, data->unwrapBKey, TOKEN_UNWRAPBKEY);
-  ephy_sync_service_set_token (self, kA_hex, TOKEN_KA);
   ephy_sync_service_set_token (self, kB_hex, TOKEN_KB);
 
   ephy_sync_service_check_storage_version (self);
 
   g_free (kA);
   g_free (kB);
-  g_free (kA_hex);
   g_free (kB_hex);
   g_free (unwrapKB);
   sign_in_async_data_free (data);
@@ -1221,7 +1187,7 @@ ephy_sync_service_do_sign_in (EphySyncService *self,
 
   /* Get the master sync key bundle from the /account/keys endpoint. */
   data = sign_in_async_data_new (email, uid, sessionToken,
-                                 keyFetchToken, unwrapBKey, tokenID_hex,
+                                 unwrapBKey, tokenID_hex,
                                  reqHMACkey, respHMACkey, respXORkey);
   ephy_sync_service_fxa_hawk_get_async (self, "account/keys", tokenID_hex,
                                         reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,

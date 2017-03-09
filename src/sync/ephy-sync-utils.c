@@ -99,12 +99,6 @@ ephy_sync_utils_token_name_from_type (EphySyncTokenType type)
       return "uid";
     case TOKEN_SESSIONTOKEN:
       return "sessionToken";
-    case TOKEN_KEYFETCHTOKEN:
-      return "keyFetchToken";
-    case TOKEN_UNWRAPBKEY:
-      return "unwrapBKey";
-    case TOKEN_KA:
-      return "kA";
     case TOKEN_KB:
       return "kB";
     case TOKEN_DEFAULT_AES_KEY:
@@ -123,12 +117,6 @@ ephy_sync_utils_token_type_from_name (const char *name)
     return TOKEN_UID;
   } else if (!g_strcmp0 (name, "sessionToken")) {
     return TOKEN_SESSIONTOKEN;
-  } else if (!g_strcmp0 (name, "keyFetchToken")) {
-    return TOKEN_KEYFETCHTOKEN;
-  } else if (!g_strcmp0 (name, "unwrapBKey")) {
-    return TOKEN_UNWRAPBKEY;
-  } else if (!g_strcmp0 (name, "kA")) {
-    return TOKEN_KA;
   } else if (!g_strcmp0 (name, "kB")) {
     return TOKEN_KB;
   } else if (!g_strcmp0 (name, "defaultAESKey")) {
