@@ -55,6 +55,8 @@ struct _EphySyncService {
   char        *unwrapBKey;
   char        *kA;
   char        *kB;
+  char        *default_aes_key;
+  char        *default_hmac_key;
 
   char        *user_email;
   double       sync_time;
@@ -768,6 +770,10 @@ ephy_sync_service_get_token (EphySyncService   *self,
       return self->kA;
     case TOKEN_KB:
       return self->kB;
+    case TOKEN_DEFAULT_AES_KEY:
+      return self->default_aes_key;
+    case TOKEN_DEFAULT_HMAC_KEY:
+      return self->default_hmac_key;
     default:
       g_assert_not_reached ();
   }
@@ -806,6 +812,14 @@ ephy_sync_service_set_token (EphySyncService   *self,
       g_free (self->kB);
       self->kB = g_strdup (value);
       break;
+    case TOKEN_DEFAULT_AES_KEY:
+      g_free (self->default_aes_key);
+      self->default_aes_key = g_strdup (value);
+      break;
+    case TOKEN_DEFAULT_HMAC_KEY:
+      g_free (self->default_hmac_key);
+      self->default_hmac_key = g_strdup (value);
+      break;
     default:
       g_assert_not_reached ();
   }
@@ -834,6 +848,8 @@ ephy_sync_service_clear_tokens (EphySyncService *self)
   g_clear_pointer (&self->unwrapBKey, g_free);
   g_clear_pointer (&self->kA, g_free);
   g_clear_pointer (&self->kB, g_free);
+  g_clear_pointer (&self->default_aes_key, g_free);
+  g_clear_pointer (&self->default_hmac_key, g_free);
 }
 
 static void
@@ -908,6 +924,112 @@ ephy_sync_service_destroy_session (EphySyncService *self,
 }
 
 static void
+obtain_default_sync_keys_cb (SoupSession *session,
+                             SoupMessage *msg,
+                             gpointer     user_data)
+{
+  EphySyncService *service;
+  JsonParser *parser;
+  JsonObject *json;
+  JsonArray *array;
+  const char *ciphertext_b64;
+  const char *iv_b64;
+  const char *hmac;
+  char *payload;
+  char *record;
+  char *default_aes_key_hex;
+  char *default_hmac_key_hex;
+  guint8 *kB;
+  guint8 *aes_key;
+  guint8 *hmac_key;
+  guint8 *default_aes_key;
+  guint8 *default_hmac_key;
+  gsize len;
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
+
+  if (msg->status_code != 200) {
+    g_warning ("Failed to get crypto/keys record: errno: %ld, errmsg: %s",
+               json_object_get_int_member (json, "errno"),
+               json_object_get_string_member (json, "message"));
+    goto out;
+  }
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  payload = g_strdup (json_object_get_string_member (json, "payload"));
+  json_parser_load_from_data (parser, payload, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
+  ciphertext_b64 = json_object_get_string_member (json, "ciphertext");
+  iv_b64 = json_object_get_string_member (json, "IV");
+  hmac = json_object_get_string_member (json, "hmac");
+
+  /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
+   * the first one used as a symmetric encryption key (AES) and the second one
+   * used as a HMAC key. */
+  kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
+  ephy_sync_crypto_derive_master_keys (kB, &aes_key, &hmac_key);
+
+  /* Under no circumstances should a client try to decrypt a record if the HMAC
+   * verification fails. If the verification is successful, proceed to decrypt
+   * the record and retrieve the default sync keys. Otherwise, signal the error
+   * to the user.*/
+  if (!ephy_sync_crypto_sha256_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
+    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, _("Failed to obtain the default sync keys"));
+    ephy_sync_service_destroy_session (service, NULL);
+    ephy_sync_service_set_user_email (service, NULL);
+    ephy_sync_service_clear_tokens (service);
+    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+    LOG ("Failed to verify the HMAC value of the crypto/keys record");
+  } else {
+    record = ephy_sync_crypto_decrypt_record (ciphertext_b64, iv_b64, aes_key);
+    json_parser_load_from_data (parser, record, -1, NULL);
+    json = json_node_get_object (json_parser_get_root (parser));
+    array = json_object_get_array_member (json, "default");
+
+    /* TODO: Handle the case when the decrypted record has a non-empty "collections" member.
+     * https://github.com/michielbdejong/fxsync-webcrypto/issues/19 */
+
+    default_aes_key = g_base64_decode (json_array_get_string_element (array, 0), &len);
+    default_hmac_key = g_base64_decode (json_array_get_string_element (array, 1), &len);
+    default_aes_key_hex = ephy_sync_crypto_encode_hex (default_aes_key, 0);
+    default_hmac_key_hex = ephy_sync_crypto_encode_hex (default_hmac_key, 0);
+    ephy_sync_service_set_token (service, default_aes_key_hex, TOKEN_DEFAULT_AES_KEY);
+    ephy_sync_service_set_token (service, default_hmac_key_hex, TOKEN_DEFAULT_HMAC_KEY);
+
+    /* Everything is OK, store the tokens in the secret schema. */
+    ephy_sync_secret_store_tokens (service);
+
+    g_free (record);
+    g_free (default_aes_key);
+    g_free (default_hmac_key);
+    g_free (default_aes_key_hex);
+    g_free (default_hmac_key_hex);
+  }
+
+  g_free (payload);
+  g_free (kB);
+  g_free (aes_key);
+  g_free (hmac_key);
+
+out:
+  g_object_unref (parser);
+
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_obtain_default_sync_keys (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  ephy_sync_service_queue_storage_request (self, "storage/crypto/keys",
+                                           SOUP_METHOD_GET, NULL, -1, -1,
+                                           obtain_default_sync_keys_cb, NULL);
+}
+
+static void
 check_storage_version_cb (SoupSession *session,
                           SoupMessage *msg,
                           gpointer     user_data)
@@ -935,8 +1057,10 @@ check_storage_version_cb (SoupSession *session,
   json = json_node_get_object (json_parser_get_root (parser));
   storage_version = json_object_get_int_member (json, "storageVersion");
 
+  /* If the storage version is correct, proceed to obtain the default sync keys.
+   * Otherwise, signal the error to the user. */
   if (storage_version == STORAGE_VERSION) {
-    ephy_sync_secret_store_tokens (service);
+    ephy_sync_service_obtain_default_sync_keys (service);
   } else {
     /* Translators: the %d is the storage version, the \n is a newline character. */
     char *message = g_strdup_printf (_("Your Firefox Account uses a storage version "

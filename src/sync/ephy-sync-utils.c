@@ -107,6 +107,10 @@ ephy_sync_utils_token_name_from_type (EphySyncTokenType type)
       return "kA";
     case TOKEN_KB:
       return "kB";
+    case TOKEN_DEFAULT_AES_KEY:
+      return "defaultAESKey";
+    case TOKEN_DEFAULT_HMAC_KEY:
+      return "defaultHMACKey";
     default:
       g_assert_not_reached ();
   }
@@ -127,6 +131,10 @@ ephy_sync_utils_token_type_from_name (const char *name)
     return TOKEN_KA;
   } else if (!g_strcmp0 (name, "kB")) {
     return TOKEN_KB;
+  } else if (!g_strcmp0 (name, "defaultAESKey")) {
+    return TOKEN_DEFAULT_AES_KEY;
+  } else if (!g_strcmp0 (name, "defaultHMACKey")) {
+    return TOKEN_DEFAULT_HMAC_KEY;
   } else {
     g_assert_not_reached ();
   }

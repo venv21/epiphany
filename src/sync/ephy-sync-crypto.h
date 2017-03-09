@@ -97,6 +97,12 @@ void                    ephy_sync_crypto_compute_sync_keys        (const char   
 void                    ephy_sync_crypto_derive_master_keys       (const guint8           *kB,
                                                                    guint8                **aes_key,
                                                                    guint8                **hmac_key);
+gboolean                ephy_sync_crypto_sha256_hmac_is_valid     (const char             *text,
+                                                                   const guint8           *key,
+                                                                   const char             *expected);
+char                   *ephy_sync_crypto_decrypt_record           (const char             *ciphertext_b64,
+                                                                   const char             *iv_b64,
+                                                                   const guint8           *aes_key);
 SyncCryptoHawkHeader   *ephy_sync_crypto_compute_hawk_header      (const char             *url,
                                                                    const char             *method,
                                                                    const char             *id,

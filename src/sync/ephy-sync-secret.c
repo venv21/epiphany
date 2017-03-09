@@ -224,6 +224,8 @@ ephy_sync_secret_store_tokens (EphySyncService *service)
                                               "unwrapBKey", ephy_sync_service_get_token (service, TOKEN_UNWRAPBKEY),
                                               "kA", ephy_sync_service_get_token (service, TOKEN_KA),
                                               "kB", ephy_sync_service_get_token (service, TOKEN_KB),
+                                              "defaultAESKey", ephy_sync_service_get_token (service, TOKEN_DEFAULT_AES_KEY),
+                                              "defaultHMACKey", ephy_sync_service_get_token (service, TOKEN_DEFAULT_HMAC_KEY),
                                               NULL);
   value = secret_value_new (tokens, -1, "text/plain");
   attributes = secret_attributes_build (EPHY_SYNC_TOKEN_SCHEMA, EMAIL_KEY,

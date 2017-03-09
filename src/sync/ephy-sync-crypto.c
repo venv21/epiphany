@@ -653,6 +653,51 @@ ephy_sync_crypto_derive_master_keys (const guint8  *kB,
   g_free (hmac_key_hex);
 }
 
+gboolean
+ephy_sync_crypto_sha256_hmac_is_valid (const char   *text,
+                                       const guint8 *key,
+                                       const char   *expected)
+{
+  char *hmac;
+  gboolean retval;
+
+  g_return_val_if_fail (text, FALSE);
+  g_return_val_if_fail (key, FALSE);
+  g_return_val_if_fail (expected, FALSE);
+
+  /* SHA256 expects a 32 bytes key. */
+  hmac = g_compute_hmac_for_string (G_CHECKSUM_SHA256, key, 32, text, -1);
+  retval = g_strcmp0 (hmac, expected) == 0;
+  g_free (hmac);
+
+  return retval;
+}
+
+char *
+ephy_sync_crypto_decrypt_record (const char   *ciphertext_b64,
+                                 const char   *iv_b64,
+                                 const guint8 *aes_key)
+{
+  char *decrypted;
+  guint8 *ciphertext;
+  guint8 *iv;
+  gsize ciphertext_len;
+  gsize iv_len;
+
+  g_return_val_if_fail (ciphertext_b64, NULL);
+  g_return_val_if_fail (iv_b64, NULL);
+  g_return_val_if_fail (aes_key, NULL);
+
+  ciphertext = g_base64_decode (ciphertext_b64, &ciphertext_len);
+  iv = g_base64_decode (iv_b64, &iv_len);
+  decrypted = ephy_sync_crypto_aes_256_decrypt (ciphertext, ciphertext_len, aes_key, iv);
+
+  g_free (ciphertext);
+  g_free (iv);
+
+  return decrypted;
+}
+
 SyncCryptoHawkHeader *
 ephy_sync_crypto_compute_hawk_header (const char            *url,
                                       const char            *method,
