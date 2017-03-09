@@ -452,6 +452,109 @@ ephy_sync_crypto_b64_urlsafe_to_b64 (char *text)
   g_strcanon (text, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+", '/');
 }
 
+static guint8 *
+ephy_sync_crypto_pad (const char *text,
+                      gsize       block_len,
+                      gsize      *out_len)
+{
+  guint8 *out;
+  gsize text_len = strlen (text);
+
+  g_assert (text);
+  g_assert (out_len);
+
+  if (text_len % block_len == 0)
+    *out_len = text_len;
+  else
+    *out_len = text_len + block_len - text_len % block_len;
+
+  out = g_malloc (*out_len);
+
+  if (text_len % block_len != 0)
+    memset (out, block_len - text_len % block_len, *out_len);
+
+  memcpy (out, text, text_len);
+
+  return out;
+}
+
+static guint8 *
+ephy_sync_crypto_aes_256_encrypt (const char   *text,
+                                  const guint8 *key,
+                                  const guint8 *iv,
+                                  gsize        *out_len)
+{
+  guint8 *padded;
+  guint8 *encrypted;
+  gsize padded_len;
+  struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
+
+  g_return_val_if_fail (text, NULL);
+  g_return_val_if_fail (key, NULL);
+  g_return_val_if_fail (iv, NULL);
+  g_return_val_if_fail (out_len, NULL);
+
+  padded = ephy_sync_crypto_pad (text, AES_BLOCK_SIZE, &padded_len);
+  encrypted = g_malloc (padded_len);
+
+  aes256_set_encrypt_key(&ctx.ctx, key);
+  CBC_SET_IV(&ctx, iv);
+  CBC_ENCRYPT(&ctx, aes256_encrypt, padded_len, encrypted, padded);
+
+  *out_len = padded_len;
+  g_free (padded);
+
+  return encrypted;
+}
+
+static char *
+ephy_sync_crypto_unpad (const guint8 *data,
+                        gsize         data_len,
+                        gsize         block_len)
+{
+  char *out;
+  gsize out_len;
+  gsize padding = data[data_len - 1];
+
+  g_assert (data);
+
+  if (padding >= 1 && padding <= block_len - 1)
+    out_len = data_len - padding;
+  else
+    out_len = data_len;
+
+  out = g_malloc0 (out_len + 1);
+  memcpy (out, data, out_len);
+
+  return out;
+}
+
+static char *
+ephy_sync_crypto_aes_256_decrypt (const guint8 *data,
+                                  gsize         data_len,
+                                  const guint8 *key,
+                                  const guint8 *iv)
+{
+  guint8 *decrypted;
+  char *unpadded;
+  struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
+
+  g_return_val_if_fail (data, NULL);
+  g_return_val_if_fail (key, NULL);
+  g_return_val_if_fail (iv, NULL);
+
+  decrypted = g_malloc (data_len);
+
+  aes256_set_decrypt_key (&ctx.ctx, key);
+  CBC_SET_IV (&ctx, iv);
+  CBC_DECRYPT (&ctx, aes256_decrypt, data_len, decrypted, data);
+
+  unpadded = ephy_sync_crypto_unpad (decrypted, data_len, AES_BLOCK_SIZE);
+  g_free (decrypted);
+
+  return unpadded;
+}
+
 void
 ephy_sync_crypto_process_key_fetch_token (const char  *keyFetchToken,
                                           guint8     **tokenID,
@@ -1038,109 +1141,6 @@ ephy_sync_crypto_aes_256 (SyncCryptoAES256Mode  mode,
   g_free (padded_data);
 
   return out;
-}
-
-static guint8 *
-ephy_sync_crypto_pad (const char *text,
-                      gsize       block_len,
-                      gsize      *out_len)
-{
-  guint8 *out;
-  gsize text_len = strlen (text);
-
-  g_assert (text);
-  g_assert (out_len);
-
-  if (text_len % block_len == 0)
-    *out_len = text_len;
-  else
-    *out_len = text_len + block_len - text_len % block_len;
-
-  out = g_malloc (*out_len);
-
-  if (text_len % block_len != 0)
-    memset (out, block_len - text_len % block_len, *out_len);
-
-  memcpy (out, text, text_len);
-
-  return out;
-}
-
-guint8 *
-ephy_sync_crypto_aes_256_encrypt (const char   *text,
-                                  const guint8 *key,
-                                  const guint8 *iv,
-                                  gsize        *out_len)
-{
-  guint8 *padded;
-  guint8 *encrypted;
-  gsize padded_len;
-  struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
-
-  g_return_val_if_fail (text, NULL);
-  g_return_val_if_fail (key, NULL);
-  g_return_val_if_fail (iv, NULL);
-  g_return_val_if_fail (out_len, NULL);
-
-  padded = ephy_sync_crypto_pad (text, AES_BLOCK_SIZE, &padded_len);
-  encrypted = g_malloc (padded_len);
-
-  aes256_set_encrypt_key(&ctx.ctx, key);
-  CBC_SET_IV(&ctx, iv);
-  CBC_ENCRYPT(&ctx, aes256_encrypt, padded_len, encrypted, padded);
-
-  *out_len = padded_len;
-  g_free (padded);
-
-  return encrypted;
-}
-
-static char *
-ephy_sync_crypto_unpad (const guint8 *data,
-                        gsize         data_len,
-                        gsize         block_len)
-{
-  char *out;
-  gsize out_len;
-  gsize padding = data[data_len - 1];
-
-  g_assert (data);
-
-  if (padding >= 1 && padding <= block_len - 1)
-    out_len = data_len - padding;
-  else
-    out_len = data_len;
-
-  out = g_malloc0 (out_len + 1);
-  memcpy (out, data, out_len);
-
-  return out;
-}
-
-char *
-ephy_sync_crypto_aes_256_decrypt (const guint8 *data,
-                                  gsize         data_len,
-                                  const guint8 *key,
-                                  const guint8 *iv)
-{
-  guint8 *decrypted;
-  char *unpadded;
-  struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
-
-  g_return_val_if_fail (data, NULL);
-  g_return_val_if_fail (key, NULL);
-  g_return_val_if_fail (iv, NULL);
-
-  decrypted = g_malloc (data_len);
-
-  aes256_set_decrypt_key (&ctx.ctx, key);
-  CBC_SET_IV (&ctx, iv);
-  CBC_DECRYPT (&ctx, aes256_decrypt, data_len, decrypted, data);
-
-  unpadded = ephy_sync_crypto_unpad (decrypted, data_len, AES_BLOCK_SIZE);
-  g_free (decrypted);
-
-  return unpadded;
 }
 
 char *
