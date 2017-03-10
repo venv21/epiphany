@@ -546,7 +546,7 @@ ephy_sync_crypto_unpad (const guint8 *data,
 
   g_assert (data);
 
-  if (padding >= 1 && padding <= block_len - 1)
+  if (padding >= 1 && padding <= block_len)
     out_len = data_len - padding;
   else
     out_len = data_len;
