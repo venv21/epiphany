@@ -931,9 +931,6 @@ obtain_default_sync_keys_cb (SoupSession *session,
   if (msg->status_code != 200) {
     g_warning ("Failed to get crypto/keys record. Status code: %u, response: %s",
                msg->status_code, msg->response_body->data);
-    ephy_sync_service_report_sign_in_error (service,
-                                            _("Something went wrong, please try again."),
-                                            TRUE);
     goto out;
   }
 
@@ -958,10 +955,7 @@ obtain_default_sync_keys_cb (SoupSession *session,
    * the record and retrieve the default sync keys. Otherwise, signal the error
    * to the user.*/
   if (!ephy_sync_crypto_sha256_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
-    LOG ("Failed to verify the HMAC value of the crypto/keys record");
-    ephy_sync_service_report_sign_in_error (service,
-                                            _("Failed to obtain the default sync keys"),
-                                            TRUE);
+    g_warning ("Failed to verify the HMAC value of the crypto/keys record");
   } else {
     record = ephy_sync_crypto_decrypt_record (ciphertext_b64, iv_b64, aes_key);
     json_parser_load_from_data (parser, record, -1, NULL);
@@ -977,9 +971,6 @@ obtain_default_sync_keys_cb (SoupSession *session,
     default_hmac_key_hex = ephy_sync_crypto_encode_hex (default_hmac_key, 0);
     ephy_sync_service_set_token (service, default_aes_key_hex, TOKEN_DEFAULT_AES_KEY);
     ephy_sync_service_set_token (service, default_hmac_key_hex, TOKEN_DEFAULT_HMAC_KEY);
-
-    /* Everything is OK, store the tokens in the secret schema. */
-    ephy_sync_secret_store_tokens (service);
 
     g_free (record);
     g_free (default_aes_key);
@@ -1039,10 +1030,10 @@ check_storage_version_cb (SoupSession *session,
   json = json_node_get_object (json_parser_get_root (parser));
   storage_version = json_object_get_int_member (json, "storageVersion");
 
-  /* If the storage version is correct, proceed to obtain the default sync keys.
+  /* If the storage version is correct, proceed to store the tokens.
    * Otherwise, signal the error to the user. */
   if (storage_version == STORAGE_VERSION) {
-    ephy_sync_service_obtain_default_sync_keys (service);
+    ephy_sync_secret_store_tokens (service);
   } else {
     LOG ("Unsupported storage version: %d", storage_version);
     /* Translators: the %d is the storage version, the \n is a newline character. */

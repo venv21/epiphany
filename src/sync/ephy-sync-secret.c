@@ -224,10 +224,6 @@ ephy_sync_secret_store_tokens (EphySyncService *service)
                                               ephy_sync_service_get_token (service, TOKEN_SESSIONTOKEN),
                                               ephy_sync_utils_token_name_from_type (TOKEN_KB),
                                               ephy_sync_service_get_token (service, TOKEN_KB),
-                                              ephy_sync_utils_token_name_from_type (TOKEN_DEFAULT_AES_KEY),
-                                              ephy_sync_service_get_token (service, TOKEN_DEFAULT_AES_KEY),
-                                              ephy_sync_utils_token_name_from_type (TOKEN_DEFAULT_HMAC_KEY),
-                                              ephy_sync_service_get_token (service, TOKEN_DEFAULT_HMAC_KEY),
                                               NULL);
   value = secret_value_new (tokens, -1, "text/plain");
   attributes = secret_attributes_build (EPHY_SYNC_TOKEN_SCHEMA, EMAIL_KEY,
