@@ -831,23 +831,11 @@ destroy_session_cb (SoupSession *session,
                     SoupMessage *msg,
                     gpointer     user_data)
 {
-  JsonParser *parser;
-  JsonObject *json;
-
-  if (msg->status_code == 200) {
-    LOG ("Session destroyed");
-    return;
-  }
-
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-
-  g_warning ("Failed to destroy session: errno: %ld, errmsg: %s",
-             json_object_get_int_member (json, "errno"),
-             json_object_get_string_member (json, "message"));
-
-  g_object_unref (parser);
+  if (msg->status_code != 200)
+    g_warning ("Failed to destroy session. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+  else
+    LOG ("Successfully destroyed session");
 }
 
 void
@@ -920,18 +908,15 @@ obtain_default_sync_keys_cb (SoupSession *session,
   guint8 *default_hmac_key;
   gsize len;
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-
   if (msg->status_code != 200) {
-    g_warning ("Failed to get crypto/keys record: errno: %ld, errmsg: %s",
-               json_object_get_int_member (json, "errno"),
-               json_object_get_string_member (json, "message"));
+    g_warning ("Failed to get crypto/keys record. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
     goto out;
   }
 
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
   payload = g_strdup (json_object_get_string_member (json, "payload"));
   json_parser_load_from_data (parser, payload, -1, NULL);
   json = json_node_get_object (json_parser_get_root (parser));
@@ -942,6 +927,7 @@ obtain_default_sync_keys_cb (SoupSession *session,
   /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
    * the first one used as a symmetric encryption key (AES) and the second one
    * used as a HMAC key. */
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
   ephy_sync_crypto_derive_master_keys (kB, &aes_key, &hmac_key);
 
@@ -986,10 +972,9 @@ obtain_default_sync_keys_cb (SoupSession *session,
   g_free (kB);
   g_free (aes_key);
   g_free (hmac_key);
-
-out:
   g_object_unref (parser);
 
+out:
   ephy_sync_service_send_next_storage_request (service);
 }
 
@@ -1014,22 +999,20 @@ check_storage_version_cb (SoupSession *session,
   char *payload;
   int storage_version;
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-
   if (msg->status_code != 200) {
-    g_warning ("Failed to check storage version: errno: %ld, errmsg: %s",
-               json_object_get_int_member (json, "errno"),
-               json_object_get_string_member (json, "message"));
+    g_warning ("Failed to check storage version. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
     goto out;
   }
 
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
+  json = json_node_get_object (json_parser_get_root (parser));
   payload = g_strdup (json_object_get_string_member (json, "payload"));
   json_parser_load_from_data (parser, payload, -1, NULL);
   json = json_node_get_object (json_parser_get_root (parser));
   storage_version = json_object_get_int_member (json, "storageVersion");
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   /* If the storage version is correct, proceed to obtain the default sync keys.
    * Otherwise, signal the error to the user. */
@@ -1053,10 +1036,9 @@ check_storage_version_cb (SoupSession *session,
   }
 
   g_free (payload);
-
-out:
   g_object_unref (parser);
 
+out:
   ephy_sync_service_send_next_storage_request (service);
 }
 
@@ -1217,13 +1199,12 @@ upload_bookmark_cb (SoupSession *session,
     ephy_bookmark_set_modification_time (bookmark, last_modified);
     ephy_bookmark_set_is_uploaded (bookmark, TRUE);
     ephy_bookmarks_manager_save_to_file_async (manager, NULL, NULL, NULL);
-
-    LOG ("Successfully uploaded to server");
+    LOG ("Successfully uploaded bookmark");
   } else if (msg->status_code == 412) {
     ephy_sync_service_download_bookmark (service, bookmark);
   } else {
-    LOG ("Failed to upload to server. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
+    g_warning ("Failed to upload bookmark. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
   }
 
   ephy_sync_service_send_next_storage_request (service);
@@ -1270,8 +1251,8 @@ download_bookmark_cb (SoupSession *session,
   const char *id;
 
   if (msg->status_code != 200) {
-    LOG ("Failed to download from server. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
+    g_warning ("Failed to download bookmark. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
     goto out;
   }
 
@@ -1292,6 +1273,7 @@ download_bookmark_cb (SoupSession *session,
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter))
     ephy_bookmarks_manager_create_tag (manager, g_sequence_get (iter));
 
+  LOG ("Successfully downloaded bookmark");
   g_object_unref (bookmark);
   g_object_unref (parser);
 
@@ -1332,14 +1314,13 @@ delete_bookmark_conditional_cb (SoupSession *session,
   bookmark = EPHY_BOOKMARK (user_data);
   manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
 
-  if (msg->status_code == 404) {
+  if (msg->status_code == 404)
     ephy_bookmarks_manager_remove_bookmark (manager, bookmark);
-  } else if (msg->status_code == 200) {
-    LOG ("The bookmark still exists on the server, don't delete it");
-  } else {
-    LOG ("Failed to delete conditionally. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
-  }
+  else if (msg->status_code == 200)
+    LOG ("The bookmark still exists on the server");
+  else
+    g_warning ("Failed to delete bookmark. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   ephy_sync_service_send_next_storage_request (service);
@@ -1352,11 +1333,11 @@ delete_bookmark_cb (SoupSession *session,
 {
   EphySyncService *service;
 
-  if (msg->status_code == 200)
-    LOG ("Successfully deleted the bookmark from the server");
+  if (msg->status_code != 200)
+    g_warning ("Failed to delete bookmark. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
   else
-    LOG ("Failed to delete. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
+    LOG ("Successfully deleted bookmark");
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   ephy_sync_service_send_next_storage_request (service);
@@ -1408,18 +1389,18 @@ sync_bookmarks_first_time_cb (SoupSession *session,
   const char *timestamp;
   double server_time;
 
+  if (msg->status_code != 200) {
+    g_warning ("Failed to first time sync bookmarks. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    goto out;
+  }
+
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
   bookmarks = ephy_bookmarks_manager_get_bookmarks (manager);
   marked = g_hash_table_new_full (g_direct_hash, g_direct_equal, g_object_unref, NULL);
   parser = json_parser_new ();
   json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-
-  if (msg->status_code != 200) {
-    LOG ("Failed to do a first time sync. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
-    goto out;
-  }
 
   array = json_node_get_array (json_parser_get_root (parser));
   for (gsize i = 0; i < json_array_get_length (array); i++) {
@@ -1504,10 +1485,10 @@ sync_bookmarks_first_time_cb (SoupSession *session,
   server_time = g_ascii_strtod (timestamp, NULL);
   ephy_sync_service_set_sync_time (service, server_time);
 
-out:
   g_object_unref (parser);
   g_hash_table_unref (marked);
 
+out:
   ephy_sync_service_send_next_storage_request (service);
 }
 
@@ -1528,8 +1509,6 @@ sync_bookmarks_cb (SoupSession *session,
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
   bookmarks = ephy_bookmarks_manager_get_bookmarks (manager);
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
 
   /* Code 304 indicates that the resource has not been modified. Therefore,
    * only upload the local bookmarks that were not uploaded. */
@@ -1537,12 +1516,15 @@ sync_bookmarks_cb (SoupSession *session,
     goto handle_local_bookmarks;
 
   if (msg->status_code != 200) {
-    LOG ("Failed to sync bookmarks. Status code: %u, response: %s",
-         msg->status_code, msg->response_body->data);
+    g_warning ("Failed to sync bookmarks. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
     goto out;
   }
 
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
   array = json_node_get_array (json_parser_get_root (parser));
+
   for (gsize i = 0; i < json_array_get_length (array); i++) {
     JsonObject *bso = json_array_get_object_element (array, i);
     EphyBookmark *remote = ephy_bookmark_from_bso (bso);
@@ -1578,6 +1560,8 @@ sync_bookmarks_cb (SoupSession *session,
     }
   }
 
+  g_object_unref (parser);
+
 handle_local_bookmarks:
   for (iter = g_sequence_get_begin_iter (bookmarks);
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter)) {
@@ -1598,8 +1582,6 @@ handle_local_bookmarks:
   ephy_sync_service_set_sync_time (service, server_time);
 
 out:
-  g_object_unref (parser);
-
   ephy_sync_service_send_next_storage_request (service);
 }
 
