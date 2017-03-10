@@ -886,6 +886,24 @@ ephy_sync_service_destroy_session (EphySyncService *self,
 }
 
 static void
+ephy_sync_service_report_sign_in_error (EphySyncService *self,
+                                        const char      *message,
+                                        gboolean         clear_tokens)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (message);
+
+  g_signal_emit (self, signals[SIGN_IN_ERROR], 0, message);
+  ephy_sync_service_destroy_session (self, NULL);
+
+  if (clear_tokens) {
+    ephy_sync_service_set_user_email (self, NULL);
+    ephy_sync_service_clear_tokens (self);
+    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+  }
+}
+
+static void
 obtain_default_sync_keys_cb (SoupSession *session,
                              SoupMessage *msg,
                              gpointer     user_data)
@@ -908,9 +926,14 @@ obtain_default_sync_keys_cb (SoupSession *session,
   guint8 *default_hmac_key;
   gsize len;
 
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+
   if (msg->status_code != 200) {
     g_warning ("Failed to get crypto/keys record. Status code: %u, response: %s",
                msg->status_code, msg->response_body->data);
+    ephy_sync_service_report_sign_in_error (service,
+                                            _("Something went wrong, please try again."),
+                                            TRUE);
     goto out;
   }
 
@@ -927,7 +950,6 @@ obtain_default_sync_keys_cb (SoupSession *session,
   /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
    * the first one used as a symmetric encryption key (AES) and the second one
    * used as a HMAC key. */
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
   ephy_sync_crypto_derive_master_keys (kB, &aes_key, &hmac_key);
 
@@ -936,12 +958,10 @@ obtain_default_sync_keys_cb (SoupSession *session,
    * the record and retrieve the default sync keys. Otherwise, signal the error
    * to the user.*/
   if (!ephy_sync_crypto_sha256_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
-    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, _("Failed to obtain the default sync keys"));
-    ephy_sync_service_destroy_session (service, NULL);
-    ephy_sync_service_set_user_email (service, NULL);
-    ephy_sync_service_clear_tokens (service);
-    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
     LOG ("Failed to verify the HMAC value of the crypto/keys record");
+    ephy_sync_service_report_sign_in_error (service,
+                                            _("Failed to obtain the default sync keys"),
+                                            TRUE);
   } else {
     record = ephy_sync_crypto_decrypt_record (ciphertext_b64, iv_b64, aes_key);
     json_parser_load_from_data (parser, record, -1, NULL);
@@ -997,11 +1017,17 @@ check_storage_version_cb (SoupSession *session,
   JsonParser *parser;
   JsonObject *json;
   char *payload;
+  char *message;
   int storage_version;
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   if (msg->status_code != 200) {
     g_warning ("Failed to check storage version. Status code: %u, response: %s",
                msg->status_code, msg->response_body->data);
+    ephy_sync_service_report_sign_in_error (service,
+                                            _("Something went wrong, please try again."),
+                                            TRUE);
     goto out;
   }
 
@@ -1012,26 +1038,19 @@ check_storage_version_cb (SoupSession *session,
   json_parser_load_from_data (parser, payload, -1, NULL);
   json = json_node_get_object (json_parser_get_root (parser));
   storage_version = json_object_get_int_member (json, "storageVersion");
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   /* If the storage version is correct, proceed to obtain the default sync keys.
    * Otherwise, signal the error to the user. */
   if (storage_version == STORAGE_VERSION) {
     ephy_sync_service_obtain_default_sync_keys (service);
   } else {
+    LOG ("Unsupported storage version: %d", storage_version);
     /* Translators: the %d is the storage version, the \n is a newline character. */
-    char *message = g_strdup_printf (_("Your Firefox Account uses a storage version "
+    message = g_strdup_printf (_("Your Firefox Account uses a storage version "
                                        "that Epiphany does not support, namely v%d.\n"
                                        "Create a new account to use the latest storage version."),
                                      storage_version);
-    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, message);
-
-    ephy_sync_service_destroy_session (service, NULL);
-    ephy_sync_service_set_user_email (service, NULL);
-    ephy_sync_service_clear_tokens (service);
-    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
-    LOG ("Unsupported storage version: %d", storage_version);
-
+    ephy_sync_service_report_sign_in_error (service, message, TRUE);
     g_free (message);
   }
 
@@ -1098,19 +1117,11 @@ get_account_keys_cb (SoupSession *session,
   SignInAsyncData *data;
   JsonParser *parser;
   JsonObject *json;
-  GError *error = NULL;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   data = (SignInAsyncData *)user_data;
   parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
-
-  if (error) {
-    g_warning ("Failed to parse JSON: %s", error->message);
-    g_error_free (error);
-    goto out;
-  }
-
+  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
   json = json_node_get_object (json_parser_get_root (parser));
 
   if (msg->status_code == 200) {
@@ -1124,16 +1135,14 @@ get_account_keys_cb (SoupSession *session,
                                           data->reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
                                           get_account_keys_cb, data);
   } else {
-    /* Translators: the %s represents the server returned error. */
-    char *message = g_strdup_printf (_("Failed to get the master sync key bundle: %s"),
-                                     json_object_get_string_member (json, "error"));
-    g_signal_emit (service, signals[SIGN_IN_ERROR], 0, message);
-    ephy_sync_service_destroy_session (service, data->sessionToken);
-    g_free (message);
+    g_warning ("Failed to GET /account/keys. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    ephy_sync_service_report_sign_in_error (service,
+                                            _("Failed to retrieve the Sync Key"),
+                                            FALSE);
     sign_in_async_data_free (data);
   }
 
-out:
   g_object_unref (parser);
 }
 
