@@ -176,6 +176,57 @@ ephy_sync_crypto_rsa_key_pair_free (SyncCryptoRSAKeyPair *keypair)
   g_slice_free (SyncCryptoRSAKeyPair, keypair);
 }
 
+static SyncCryptoKeyBundle *
+ephy_sync_crypto_key_bundle_new (const char *aes_key_hex,
+                                 const char *hmac_key_hex)
+{
+  SyncCryptoKeyBundle *bundle;
+
+  bundle = g_slice_new (SyncCryptoKeyBundle);
+  bundle->aes_key_hex = g_strdup (aes_key_hex);
+  bundle->hmac_key_hex = g_strdup (hmac_key_hex);
+
+  return bundle;
+}
+
+SyncCryptoKeyBundle *
+ephy_sync_crypto_key_bundle_from_array (JsonArray *array)
+{
+  SyncCryptoKeyBundle *bundle;
+  char *aes_key_hex;
+  char *hmac_key_hex;
+  guint8 *aes_key;
+  guint8 *hmac_key;
+  gsize len;
+
+  g_return_val_if_fail (array, NULL);
+  g_return_val_if_fail (json_array_get_length (array) == 2, NULL);
+
+  aes_key = g_base64_decode (json_array_get_string_element (array, 0), &len);
+  hmac_key = g_base64_decode (json_array_get_string_element (array, 1), &len);
+  aes_key_hex = ephy_sync_crypto_encode_hex (aes_key, 0);
+  hmac_key_hex = ephy_sync_crypto_encode_hex (hmac_key, 0);
+  bundle = ephy_sync_crypto_key_bundle_new (aes_key_hex, hmac_key_hex);
+
+  g_free (aes_key);
+  g_free (hmac_key);
+  g_free (aes_key_hex);
+  g_free (hmac_key_hex);
+
+  return bundle;
+}
+
+void
+ephy_sync_crypto_key_bundle_free (SyncCryptoKeyBundle *bundle)
+{
+  g_return_if_fail (bundle);
+
+  g_free (bundle->aes_key_hex);
+  g_free (bundle->hmac_key_hex);
+
+  g_slice_free (SyncCryptoKeyBundle, bundle);
+}
+
 static char *
 ephy_sync_crypto_kw (const char *name)
 {

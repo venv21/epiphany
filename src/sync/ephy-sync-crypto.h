@@ -21,6 +21,7 @@
 #pragma once
 
 #include <glib-object.h>
+#include <json-glib/json-glib.h>
 #include <nettle/rsa.h>
 
 G_BEGIN_DECLS
@@ -67,6 +68,11 @@ typedef struct {
   struct rsa_private_key private;
 } SyncCryptoRSAKeyPair;
 
+typedef struct {
+  char *aes_key_hex;
+  char *hmac_key_hex;
+} SyncCryptoKeyBundle;
+
 SyncCryptoHawkOptions  *ephy_sync_crypto_hawk_options_new         (const char             *app,
                                                                    const char             *dlg,
                                                                    const char             *ext,
@@ -79,6 +85,8 @@ SyncCryptoHawkOptions  *ephy_sync_crypto_hawk_options_new         (const char   
 void                    ephy_sync_crypto_hawk_options_free        (SyncCryptoHawkOptions  *options);
 void                    ephy_sync_crypto_hawk_header_free         (SyncCryptoHawkHeader   *header);
 void                    ephy_sync_crypto_rsa_key_pair_free        (SyncCryptoRSAKeyPair   *keypair);
+SyncCryptoKeyBundle    *ephy_sync_crypto_key_bundle_from_array    (JsonArray              *array);
+void                    ephy_sync_crypto_key_bundle_free          (SyncCryptoKeyBundle    *bundle);
 void                    ephy_sync_crypto_process_key_fetch_token  (const char             *keyFetchToken,
                                                                    guint8                **tokenID,
                                                                    guint8                **reqHMACkey,

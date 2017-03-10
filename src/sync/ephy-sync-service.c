@@ -52,8 +52,7 @@ struct _EphySyncService {
   char        *uid;
   char        *sessionToken;
   char        *kB;
-  char        *default_aes_key;
-  char        *default_hmac_key;
+  GHashTable  *key_bundles;
 
   char        *user_email;
   double       sync_time;
@@ -614,6 +613,7 @@ ephy_sync_service_finalize (GObject *object)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
 
   g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_server_request_async_data_free);
+  g_hash_table_destroy (self->key_bundles);
 
   G_OBJECT_CLASS (ephy_sync_service_parent_class)->finalize (object);
 }
@@ -676,6 +676,8 @@ ephy_sync_service_init (EphySyncService *self)
 
   self->session = soup_session_new ();
   self->storage_queue = g_queue_new ();
+  self->key_bundles = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                             NULL, (GDestroyNotify)ephy_sync_crypto_key_bundle_free);
 
   settings = ephy_embed_prefs_get_settings ();
   user_agent = webkit_settings_get_user_agent (settings);
@@ -759,10 +761,6 @@ ephy_sync_service_get_token (EphySyncService   *self,
       return self->sessionToken;
     case TOKEN_KB:
       return self->kB;
-    case TOKEN_DEFAULT_AES_KEY:
-      return self->default_aes_key;
-    case TOKEN_DEFAULT_HMAC_KEY:
-      return self->default_hmac_key;
     default:
       g_assert_not_reached ();
   }
@@ -789,14 +787,6 @@ ephy_sync_service_set_token (EphySyncService   *self,
       g_free (self->kB);
       self->kB = g_strdup (value);
       break;
-    case TOKEN_DEFAULT_AES_KEY:
-      g_free (self->default_aes_key);
-      self->default_aes_key = g_strdup (value);
-      break;
-    case TOKEN_DEFAULT_HMAC_KEY:
-      g_free (self->default_hmac_key);
-      self->default_hmac_key = g_strdup (value);
-      break;
     default:
       g_assert_not_reached ();
   }
@@ -822,8 +812,6 @@ ephy_sync_service_clear_tokens (EphySyncService *self)
   g_clear_pointer (&self->uid, g_free);
   g_clear_pointer (&self->sessionToken, g_free);
   g_clear_pointer (&self->kB, g_free);
-  g_clear_pointer (&self->default_aes_key, g_free);
-  g_clear_pointer (&self->default_hmac_key, g_free);
 }
 
 static void
@@ -904,27 +892,26 @@ ephy_sync_service_report_sign_in_error (EphySyncService *self,
 }
 
 static void
-obtain_default_sync_keys_cb (SoupSession *session,
-                             SoupMessage *msg,
-                             gpointer     user_data)
+obtain_sync_key_bundles (SoupSession *session,
+                         SoupMessage *msg,
+                         gpointer     user_data)
 {
   EphySyncService *service;
   JsonParser *parser;
   JsonObject *json;
+  JsonObject *collections;
+  JsonNode *node;
   JsonArray *array;
+  JsonObjectIter iter;
   const char *ciphertext_b64;
   const char *iv_b64;
   const char *hmac;
+  const char *member;
   char *payload;
   char *record;
-  char *default_aes_key_hex;
-  char *default_hmac_key_hex;
   guint8 *kB;
   guint8 *aes_key;
   guint8 *hmac_key;
-  guint8 *default_aes_key;
-  guint8 *default_hmac_key;
-  gsize len;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
@@ -953,30 +940,33 @@ obtain_default_sync_keys_cb (SoupSession *session,
   /* Under no circumstances should a client try to decrypt a record if the HMAC
    * verification fails. If the verification is successful, proceed to decrypt
    * the record and retrieve the default sync keys. Otherwise, signal the error
-   * to the user.*/
+   * to the user. */
   if (!ephy_sync_crypto_sha256_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
     g_warning ("Failed to verify the HMAC value of the crypto/keys record");
   } else {
     record = ephy_sync_crypto_decrypt_record (ciphertext_b64, iv_b64, aes_key);
     json_parser_load_from_data (parser, record, -1, NULL);
     json = json_node_get_object (json_parser_get_root (parser));
+
+    /* Get the default key bundle. This is always present. */
     array = json_object_get_array_member (json, "default");
+    g_hash_table_insert (service->key_bundles,
+                         (char *)"default",
+                         ephy_sync_crypto_key_bundle_from_array (array));
 
-    /* TODO: Handle the case when the decrypted record has a non-empty "collections" member.
-     * https://github.com/michielbdejong/fxsync-webcrypto/issues/19 */
-
-    default_aes_key = g_base64_decode (json_array_get_string_element (array, 0), &len);
-    default_hmac_key = g_base64_decode (json_array_get_string_element (array, 1), &len);
-    default_aes_key_hex = ephy_sync_crypto_encode_hex (default_aes_key, 0);
-    default_hmac_key_hex = ephy_sync_crypto_encode_hex (default_hmac_key, 0);
-    ephy_sync_service_set_token (service, default_aes_key_hex, TOKEN_DEFAULT_AES_KEY);
-    ephy_sync_service_set_token (service, default_hmac_key_hex, TOKEN_DEFAULT_HMAC_KEY);
+    /* Get the per-collection key bundles, if any. */
+    collections = json_object_get_object_member (json, "collections");
+    json_object_iter_init (&iter, collections);
+    while (json_object_iter_next (&iter, &member, &node)) {
+      if (JSON_NODE_HOLDS_ARRAY (node)) {
+        array = json_node_get_array (node);
+        g_hash_table_insert (service->key_bundles,
+                             (char *)member,
+                             ephy_sync_crypto_key_bundle_from_array (array));
+      }
+    }
 
     g_free (record);
-    g_free (default_aes_key);
-    g_free (default_hmac_key);
-    g_free (default_aes_key_hex);
-    g_free (default_hmac_key_hex);
   }
 
   g_free (payload);
@@ -990,13 +980,14 @@ out:
 }
 
 static void
-ephy_sync_service_obtain_default_sync_keys (EphySyncService *self)
+ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self)
 {
   g_assert (EPHY_IS_SYNC_SERVICE (self));
 
+  g_hash_table_remove_all (self->key_bundles);
   ephy_sync_service_queue_storage_request (self, "storage/crypto/keys",
                                            SOUP_METHOD_GET, NULL, -1, -1,
-                                           obtain_default_sync_keys_cb, NULL);
+                                           obtain_sync_key_bundles, NULL);
 }
 
 static void
