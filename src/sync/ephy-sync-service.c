@@ -891,7 +891,6 @@ ephy_sync_service_report_sign_in_error (EphySyncService *self,
   if (clear_tokens) {
     ephy_sync_service_set_user_email (self, NULL);
     ephy_sync_service_clear_tokens (self);
-    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
   }
 }
 
@@ -1079,7 +1078,6 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
   kB_hex = ephy_sync_crypto_encode_hex (kB, 0);
 
   /* Save the email and the tokens. */
-  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, data->email);
   ephy_sync_service_set_user_email (self, data->email);
   ephy_sync_service_set_token (self, data->uid, TOKEN_UID);
   ephy_sync_service_set_token (self, data->sessionToken, TOKEN_SESSIONTOKEN);

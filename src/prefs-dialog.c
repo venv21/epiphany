@@ -230,6 +230,10 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     /* Show the 'Signed in' panel. */
     sync_hide_fxa_iframe (dialog, ephy_sync_service_get_user_email (service));
 
+    g_settings_set_string (EPHY_SETTINGS_MAIN,
+                           EPHY_PREFS_SYNC_USER,
+                           ephy_sync_service_get_user_email (service));
+
     /* Do a first time sync and set a periodical sync to be executed. */
     ephy_sync_service_sync_bookmarks (service, TRUE);
     ephy_sync_service_start_periodical_sync (service, FALSE);
@@ -238,7 +242,6 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     ephy_sync_service_destroy_session (service, NULL);
 
     /* Unset the email and tokens. */
-    g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
     ephy_sync_service_set_user_email (service, NULL);
     ephy_sync_service_clear_tokens (service);
 
