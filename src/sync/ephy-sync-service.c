@@ -104,13 +104,13 @@ typedef struct {
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
 
 static StorageRequestAsyncData *
-storage_server_request_async_data_new (const char          *endpoint,
-                                       const char          *method,
-                                       const char          *request_body,
-                                       double               modified_since,
-                                       double               unmodified_since,
-                                       SoupSessionCallback  callback,
-                                       gpointer             user_data)
+storage_request_async_data_new (const char          *endpoint,
+                                const char          *method,
+                                const char          *request_body,
+                                double               modified_since,
+                                double               unmodified_since,
+                                SoupSessionCallback  callback,
+                                gpointer             user_data)
 {
   StorageRequestAsyncData *data;
 
@@ -127,7 +127,7 @@ storage_server_request_async_data_new (const char          *endpoint,
 }
 
 static void
-storage_server_request_async_data_free (StorageRequestAsyncData *data)
+storage_request_async_data_free (StorageRequestAsyncData *data)
 {
   g_assert (data);
 
@@ -557,7 +557,7 @@ ephy_sync_service_send_storage_request (EphySyncService         *self,
   g_free (if_modified_since);
   g_free (if_unmodified_since);
   ephy_sync_crypto_hawk_header_free (hheader);
-  storage_server_request_async_data_free (data);
+  storage_request_async_data_free (data);
 }
 
 static void
@@ -597,9 +597,9 @@ ephy_sync_service_queue_storage_request (EphySyncService     *self,
   g_assert (method);
 
   g_queue_push_tail (self->storage_queue,
-                     storage_server_request_async_data_new (endpoint, method, request_body,
-                                                            modified_since, unmodified_since,
-                                                            callback, user_data));
+                     storage_request_async_data_new (endpoint, method, request_body,
+                                                     modified_since, unmodified_since,
+                                                     callback, user_data));
 
   ephy_sync_service_send_next_storage_request (self);
 }
@@ -612,7 +612,7 @@ ephy_sync_service_finalize (GObject *object)
   if (self->keypair)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
 
-  g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_server_request_async_data_free);
+  g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_request_async_data_free);
   g_hash_table_destroy (self->key_bundles);
 
   G_OBJECT_CLASS (ephy_sync_service_parent_class)->finalize (object);
