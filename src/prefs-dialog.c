@@ -406,17 +406,7 @@ on_sync_sign_out_button_clicked (GtkWidget   *button,
   EphySyncService *service;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-
-  /* Destroy session and delete tokens. */
-  ephy_sync_service_stop_periodical_sync (service);
-  ephy_sync_service_destroy_session (service, NULL);
-  ephy_sync_service_clear_storage_credentials (service);
-  ephy_sync_service_clear_tokens (service);
-  ephy_sync_secret_forget_tokens ();
-  ephy_sync_service_set_user_email (service, NULL);
-  ephy_sync_service_set_sync_time (service, 0);
-
-  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+  ephy_sync_service_do_sign_out (service);
 
   /* Show sign in box. */
   if (dialog->fxa_web_view == NULL)

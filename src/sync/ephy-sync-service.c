@@ -844,9 +844,13 @@ ephy_sync_service_destroy_session (EphySyncService *self,
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
 
-  if (!sessionToken)
+  if (!sessionToken) {
     sessionToken = ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN);
-  g_return_if_fail (sessionToken);
+    if (!sessionToken) {
+      g_warning ("Cannot destroy session: missing sessionToken");
+      return;
+    }
+  }
 
   url = g_strdup_printf ("%s%s", MOZILLA_FXA_SERVER_URL, endpoint);
   ephy_sync_crypto_process_session_token (sessionToken, &tokenID, &reqHMACkey, &requestKey);
@@ -1169,6 +1173,23 @@ ephy_sync_service_do_sign_in (EphySyncService *self,
                                         get_account_keys_cb, data);
 
   g_free (tokenID_hex);
+}
+
+void
+ephy_sync_service_do_sign_out (EphySyncService *self)
+{
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+
+  /* Destroy session and delete tokens. */
+  ephy_sync_service_stop_periodical_sync (self);
+  ephy_sync_service_destroy_session (self, NULL);
+  ephy_sync_service_clear_storage_credentials (self);
+  ephy_sync_service_clear_tokens (self);
+  ephy_sync_secret_forget_tokens ();
+  ephy_sync_service_set_user_email (self, NULL);
+  ephy_sync_service_set_sync_time (self, 0);
+
+  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
 }
 
 static void

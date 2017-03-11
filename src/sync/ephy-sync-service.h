@@ -55,6 +55,7 @@ void              ephy_sync_service_do_sign_in                 (EphySyncService 
                                                                 const char        *sessionToken,
                                                                 const char        *keyFetchToken,
                                                                 const char        *unwrapBKey);
+void              ephy_sync_service_do_sign_out                (EphySyncService   *self);
 void              ephy_sync_service_upload_bookmark            (EphySyncService   *self,
                                                                 EphyBookmark      *bookmark,
                                                                 gboolean           force);
