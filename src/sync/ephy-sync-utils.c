@@ -25,7 +25,8 @@
 #include <string.h>
 
 char *
-ephy_sync_utils_build_json_string (const char *key,
+ephy_sync_utils_build_json_string (gboolean    escape,
+                                   const char *key,
                                    const char *value,
                                    ...)
 {
@@ -35,13 +36,24 @@ ephy_sync_utils_build_json_string (const char *key,
   char *next_value;
   char *tmp;
 
-  json = g_strconcat ("{\"", key, "\": \"", value, "\"", NULL);
+  json = g_strconcat (escape ? "{\\\"" : "{\"",
+                      key,
+                      escape ? "\\\": \\\"" : "\": \"",
+                      value,
+                      escape ? "\\\"" : "\"",
+                      NULL);
   va_start (args, value);
 
   while ((next_key = va_arg (args, char *)) != NULL) {
     next_value = va_arg (args, char *);
     tmp = json;
-    json = g_strconcat (json, ", \"", next_key, "\": \"", next_value, "\"", NULL);
+    json = g_strconcat (json,
+                        escape ? ", \\\"" : ", \"",
+                        next_key,
+                        escape ? "\\\": \\\"" : "\": \"",
+                        next_value,
+                        escape ? "\\\"" : "\"",
+                        NULL);
     g_free (tmp);
   }
 
@@ -57,7 +69,7 @@ char *
 ephy_sync_utils_create_bso_json (const char *id,
                                  const char *payload)
 {
-  return ephy_sync_utils_build_json_string ("id", id, "payload", payload, NULL);
+  return ephy_sync_utils_build_json_string (FALSE, "id", id, "payload", payload, NULL);
 }
 
 char *

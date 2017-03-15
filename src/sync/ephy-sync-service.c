@@ -488,7 +488,7 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
 
   n = mpz_get_str (NULL, 10, self->keypair->public.n);
   e = mpz_get_str (NULL, 10, self->keypair->public.e);
-  public_key_json = ephy_sync_utils_build_json_string ("algorithm", "RS", "n", n, "e", e, NULL);
+  public_key_json = ephy_sync_utils_build_json_string (FALSE, "algorithm", "RS", "n", n, "e", e, NULL);
   request_body = g_strdup_printf ("{\"publicKey\": %s, \"duration\": %d}",
                                   public_key_json, CERTIFICATE_DURATION);
   ephy_sync_service_fxa_hawk_post_async (self, "certificate/sign", tokenID_hex,

@@ -218,7 +218,8 @@ ephy_sync_secret_store_tokens (EphySyncService *service)
   char *tokens;
   char *label;
 
-  tokens = ephy_sync_utils_build_json_string (ephy_sync_utils_token_name_from_type (TOKEN_UID),
+  tokens = ephy_sync_utils_build_json_string (FALSE,
+                                              ephy_sync_utils_token_name_from_type (TOKEN_UID),
                                               ephy_sync_service_get_token (service, TOKEN_UID),
                                               ephy_sync_utils_token_name_from_type (TOKEN_SESSIONTOKEN),
                                               ephy_sync_service_get_token (service, TOKEN_SESSIONTOKEN),

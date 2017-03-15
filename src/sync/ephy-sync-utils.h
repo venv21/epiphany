@@ -30,7 +30,8 @@ typedef enum {
 
 G_BEGIN_DECLS
 
-char               *ephy_sync_utils_build_json_string     (const char        *key,
+char               *ephy_sync_utils_build_json_string     (gboolean           escape,
+                                                           const char        *key,
                                                            const char        *value,
                                                            ...) G_GNUC_NULL_TERMINATED;
 char               *ephy_sync_utils_create_bso_json       (const char        *id,
