@@ -905,9 +905,9 @@ ephy_sync_service_report_sign_in_error (EphySyncService *self,
 }
 
 static void
-obtain_sync_key_bundles (SoupSession *session,
-                         SoupMessage *msg,
-                         gpointer     user_data)
+obtain_sync_key_bundles_cb (SoupSession *session,
+                            SoupMessage *msg,
+                            gpointer     user_data)
 {
   EphySyncService *service;
   SyncCryptoKeyBundle *bundle;
@@ -986,7 +986,7 @@ ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self)
   g_hash_table_remove_all (self->key_bundles);
   ephy_sync_service_queue_storage_request (self, "storage/crypto/keys",
                                            SOUP_METHOD_GET, NULL, -1, -1,
-                                           obtain_sync_key_bundles, NULL);
+                                           obtain_sync_key_bundles_cb, NULL);
 }
 
 static void
