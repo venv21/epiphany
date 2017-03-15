@@ -102,15 +102,10 @@ void                    ephy_sync_crypto_compute_sync_keys        (const char   
                                                                    const guint8           *unwrapBKey,
                                                                    guint8                **kA,
                                                                    guint8                **kB);
-void                    ephy_sync_crypto_derive_master_keys       (const guint8           *kB,
-                                                                   guint8                **aes_key,
-                                                                   guint8                **hmac_key);
-gboolean                ephy_sync_crypto_sha256_hmac_is_valid     (const char             *text,
-                                                                   const guint8           *key,
-                                                                   const char             *expected);
-char                   *ephy_sync_crypto_decrypt_record           (const char             *ciphertext_b64,
-                                                                   const char             *iv_b64,
-                                                                   const guint8           *aes_key);
+SyncCryptoKeyBundle    *ephy_sync_crypto_derive_key_bundle        (const guint8           *key,
+                                                                   gsize                   key_len);
+char                   *ephy_sync_crypto_decrypt_record           (const char             *payload,
+                                                                   SyncCryptoKeyBundle    *bundle);
 SyncCryptoHawkHeader   *ephy_sync_crypto_compute_hawk_header      (const char             *url,
                                                                    const char             *method,
                                                                    const char             *id,

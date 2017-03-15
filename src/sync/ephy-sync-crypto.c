@@ -618,9 +618,9 @@ ephy_sync_crypto_aes_256_decrypt (const guint8 *data,
   char *unpadded;
   struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
 
-  g_return_val_if_fail (data, NULL);
-  g_return_val_if_fail (key, NULL);
-  g_return_val_if_fail (iv, NULL);
+  g_assert (data);
+  g_assert (key);
+  g_assert (iv);
 
   decrypted = g_malloc (data_len);
 
@@ -632,6 +632,26 @@ ephy_sync_crypto_aes_256_decrypt (const guint8 *data,
   g_free (decrypted);
 
   return unpadded;
+}
+
+static gboolean
+ephy_sync_crypto_hmac_is_valid (const char   *text,
+                                const guint8 *key,
+                                const char   *expected)
+{
+  char *hmac;
+  gboolean retval;
+
+  g_assert (text);
+  g_assert (key);
+  g_assert (expected);
+
+  /* SHA256 expects a 32 bytes key. */
+  hmac = g_compute_hmac_for_string (G_CHECKSUM_SHA256, key, 32, text, -1);
+  retval = g_strcmp0 (hmac, expected) == 0;
+  g_free (hmac);
+
+  return retval;
 }
 
 void
@@ -785,99 +805,128 @@ ephy_sync_crypto_compute_sync_keys (const char    *bundle,
   g_free (respMAC2_hex);
 }
 
-void
-ephy_sync_crypto_derive_master_keys (const guint8  *kB,
-                                     guint8       **aes_key,
-                                     guint8       **hmac_key)
+SyncCryptoKeyBundle *
+ephy_sync_crypto_derive_key_bundle (const guint8 *key,
+                                    gsize         key_len)
 {
+  SyncCryptoKeyBundle *bundle;
   guint8 *salt;
   guint8 *prk;
   guint8 *tmp;
+  guint8 *aes_key;
   char *prk_hex;
   char *aes_key_hex;
   char *hmac_key_hex;
   const char *info = "identity.mozilla.com/picl/v1/oldsync";
 
-  g_return_if_fail (kB);
-  g_return_if_fail (aes_key);
-  g_return_if_fail (hmac_key);
+  g_return_val_if_fail (key, NULL);
+  g_return_val_if_fail (key_len > 0, NULL);
 
   /* Perform a two step HKDF with an all-zeros salt.
    * T(1) will represent the AES key, T(2) will represent the HMAC key. */
 
-  salt = g_malloc0 (EPHY_SYNC_TOKEN_LENGTH);
+  salt = g_malloc0 (key_len);
   prk_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
-                                     salt, EPHY_SYNC_TOKEN_LENGTH,
-                                     kB, EPHY_SYNC_TOKEN_LENGTH);
+                                     salt, key_len,
+                                     key, key_len);
   prk = ephy_sync_crypto_decode_hex (prk_hex);
   tmp = ephy_sync_crypto_concat_bytes ((guint8 *)info, strlen (info),
                                        "\x01", 1,
                                        NULL);
   aes_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
-                                         prk, EPHY_SYNC_TOKEN_LENGTH,
+                                         prk, key_len,
                                          tmp, strlen (info) + 1);
-  *aes_key = ephy_sync_crypto_decode_hex (aes_key_hex);
+  aes_key = ephy_sync_crypto_decode_hex (aes_key_hex);
   g_free (tmp);
-  tmp = ephy_sync_crypto_concat_bytes (*aes_key, EPHY_SYNC_TOKEN_LENGTH,
+  tmp = ephy_sync_crypto_concat_bytes (aes_key, key_len,
                                        (guint8 *)info, strlen (info),
                                        "\x02", 1,
                                        NULL);
   hmac_key_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
-                                          prk, EPHY_SYNC_TOKEN_LENGTH,
-                                          tmp, EPHY_SYNC_TOKEN_LENGTH + strlen (info) + 1);
-  *hmac_key = ephy_sync_crypto_decode_hex (hmac_key_hex);
+                                          prk, key_len,
+                                          tmp, key_len + strlen (info) + 1);
+  bundle = ephy_sync_crypto_key_bundle_new (aes_key_hex, hmac_key_hex);
 
-  g_free (salt);
-  g_free (prk_hex);
-  g_free (prk);
+  g_free (hmac_key_hex);
   g_free (tmp);
   g_free (aes_key_hex);
-  g_free (hmac_key_hex);
-}
+  g_free (prk);
+  g_free (prk_hex);
+  g_free (salt);
 
-gboolean
-ephy_sync_crypto_sha256_hmac_is_valid (const char   *text,
-                                       const guint8 *key,
-                                       const char   *expected)
-{
-  char *hmac;
-  gboolean retval;
-
-  g_return_val_if_fail (text, FALSE);
-  g_return_val_if_fail (key, FALSE);
-  g_return_val_if_fail (expected, FALSE);
-
-  /* SHA256 expects a 32 bytes key. */
-  hmac = g_compute_hmac_for_string (G_CHECKSUM_SHA256, key, 32, text, -1);
-  retval = g_strcmp0 (hmac, expected) == 0;
-  g_free (hmac);
-
-  return retval;
+  return bundle;
 }
 
 char *
-ephy_sync_crypto_decrypt_record (const char   *ciphertext_b64,
-                                 const char   *iv_b64,
-                                 const guint8 *aes_key)
+ephy_sync_crypto_decrypt_record (const char          *payload,
+                                 SyncCryptoKeyBundle *bundle)
 {
-  char *decrypted;
+  JsonParser *parser;
+  JsonObject *json;
+  guint8 *aes_key;
+  guint8 *hmac_key;
   guint8 *ciphertext;
   guint8 *iv;
+  char *cleartext = NULL;
+  const char *ciphertext_b64;
+  const char *iv_b64;
+  const char *hmac;
   gsize ciphertext_len;
   gsize iv_len;
 
-  g_return_val_if_fail (ciphertext_b64, NULL);
-  g_return_val_if_fail (iv_b64, NULL);
-  g_return_val_if_fail (aes_key, NULL);
+  g_return_val_if_fail (payload, NULL);
+  g_return_val_if_fail (bundle, NULL);
 
+  /* Extract ciphertext, iv and hmac from payload. */
+  parser = json_parser_new ();
+  if (!json_parser_load_from_data (parser, payload, -1, NULL)) {
+    g_warning ("Payload is not a valid JSON");
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_parser;
+  }
+  json = json_node_get_object (json_parser_get_root (parser));
+  if (!json_object_has_member (json, "ciphertext") ||
+      !json_object_has_member (json, "IV") ||
+      !json_object_has_member (json, "hmac")) {
+    g_warning ("JSON object has missing members");
+    goto free_parser;
+  }
+  ciphertext_b64 = json_object_get_string_member (json, "ciphertext");
+  iv_b64 = json_object_get_string_member (json, "IV");
+  hmac = json_object_get_string_member (json, "hmac");
+
+  /* Get the encryption key and the HMAC key. */
+  aes_key = ephy_sync_crypto_decode_hex (bundle->aes_key_hex);
+  hmac_key = ephy_sync_crypto_decode_hex (bundle->hmac_key_hex);
+  if (!aes_key || !hmac_key) {
+    g_warning ("The key bundle does not hold valid keys");
+    goto free_keys;
+  }
+
+  /* Under no circumstances should a client try to decrypt a record
+   * if the HMAC verification fails. */
+  if (!ephy_sync_crypto_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
+    g_warning ("Incorrect HMAC value");
+    goto free_keys;
+  }
+
+  /* Finally, decrypt the record. */
   ciphertext = g_base64_decode (ciphertext_b64, &ciphertext_len);
   iv = g_base64_decode (iv_b64, &iv_len);
-  decrypted = ephy_sync_crypto_aes_256_decrypt (ciphertext, ciphertext_len, aes_key, iv);
+  cleartext = ephy_sync_crypto_aes_256_decrypt (ciphertext, ciphertext_len, aes_key, iv);
 
   g_free (ciphertext);
   g_free (iv);
+free_keys:
+  g_free (aes_key);
+  g_free (hmac_key);
+free_parser:
+  g_object_unref (parser);
 
-  return decrypted;
+  return cleartext;
 }
 
 SyncCryptoHawkHeader *

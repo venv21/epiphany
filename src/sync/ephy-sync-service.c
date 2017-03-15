@@ -910,21 +910,17 @@ obtain_sync_key_bundles (SoupSession *session,
                          gpointer     user_data)
 {
   EphySyncService *service;
+  SyncCryptoKeyBundle *bundle;
   JsonParser *parser;
   JsonObject *json;
   JsonObject *collections;
   JsonNode *node;
   JsonArray *array;
   JsonObjectIter iter;
-  const char *ciphertext_b64;
-  const char *iv_b64;
-  const char *hmac;
   const char *member;
-  char *payload;
+  const char *payload;
   char *record;
   guint8 *kB;
-  guint8 *aes_key;
-  guint8 *hmac_key;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
@@ -937,27 +933,16 @@ obtain_sync_key_bundles (SoupSession *session,
   parser = json_parser_new ();
   json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
   json = json_node_get_object (json_parser_get_root (parser));
-  payload = g_strdup (json_object_get_string_member (json, "payload"));
-  json_parser_load_from_data (parser, payload, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-  ciphertext_b64 = json_object_get_string_member (json, "ciphertext");
-  iv_b64 = json_object_get_string_member (json, "IV");
-  hmac = json_object_get_string_member (json, "hmac");
+  payload = json_object_get_string_member (json, "payload");
 
   /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
    * the first one used as a symmetric encryption key (AES) and the second one
    * used as a HMAC key. */
   kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
-  ephy_sync_crypto_derive_master_keys (kB, &aes_key, &hmac_key);
+  bundle = ephy_sync_crypto_derive_key_bundle (kB, EPHY_SYNC_TOKEN_LENGTH);
 
-  /* Under no circumstances should a client try to decrypt a record if the HMAC
-   * verification fails. If the verification is successful, proceed to decrypt
-   * the record and retrieve the default sync keys. Otherwise, signal the error
-   * to the user. */
-  if (!ephy_sync_crypto_sha256_hmac_is_valid (ciphertext_b64, hmac_key, hmac)) {
-    g_warning ("Failed to verify the HMAC value of the crypto/keys record");
-  } else {
-    record = ephy_sync_crypto_decrypt_record (ciphertext_b64, iv_b64, aes_key);
+  record = ephy_sync_crypto_decrypt_record (payload, bundle);
+  if (record) {
     json_parser_load_from_data (parser, record, -1, NULL);
     json = json_node_get_object (json_parser_get_root (parser));
 
@@ -980,13 +965,14 @@ obtain_sync_key_bundles (SoupSession *session,
     }
 
     g_free (record);
+  } else {
+    /* TODO: Notify the user that the sync failed due to missing sync keys. */
+    g_warning ("Failed to retrieve the sync key bundles");
   }
 
-  g_free (payload);
   g_free (kB);
-  g_free (aes_key);
-  g_free (hmac_key);
   g_object_unref (parser);
+  ephy_sync_crypto_key_bundle_free (bundle);
 
 out:
   ephy_sync_service_send_next_storage_request (service);
