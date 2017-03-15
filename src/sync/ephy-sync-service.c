@@ -796,10 +796,16 @@ SyncCryptoKeyBundle *
 ephy_sync_service_get_key_bundle (EphySyncService *self,
                                   const char      *collection)
 {
+  SyncCryptoKeyBundle *bundle;
+
   g_return_val_if_fail (EPHY_IS_SYNC_SERVICE (self), NULL);
   g_return_val_if_fail (collection, NULL);
 
-  return g_hash_table_lookup (self->key_bundles, collection);
+  bundle = g_hash_table_lookup (self->key_bundles, collection);
+  if (!bundle)
+    bundle = g_hash_table_lookup (self->key_bundles, "default");
+
+  return bundle;
 }
 
 void
