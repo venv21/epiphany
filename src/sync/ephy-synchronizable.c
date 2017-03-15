@@ -18,7 +18,6 @@
  *  along with Epiphany.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include "config.h"
 #include "ephy-synchronizable.h"
 
