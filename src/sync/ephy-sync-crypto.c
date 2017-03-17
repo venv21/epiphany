@@ -32,6 +32,7 @@
 
 #define HAWK_VERSION  1
 #define NONCE_LEN     6
+#define IV_LEN        16
 
 static const char hex_digits[] = "0123456789abcdef";
 
@@ -568,10 +569,10 @@ ephy_sync_crypto_aes_256_encrypt (const char   *text,
   gsize padded_len;
   struct CBC_CTX(struct aes256_ctx, AES_BLOCK_SIZE) ctx;
 
-  g_return_val_if_fail (text, NULL);
-  g_return_val_if_fail (key, NULL);
-  g_return_val_if_fail (iv, NULL);
-  g_return_val_if_fail (out_len, NULL);
+  g_assert (text);
+  g_assert (key);
+  g_assert (iv);
+  g_assert (out_len);
 
   padded = ephy_sync_crypto_pad (text, AES_BLOCK_SIZE, &padded_len);
   encrypted = g_malloc (padded_len);
@@ -927,6 +928,70 @@ free_parser:
   g_object_unref (parser);
 
   return cleartext;
+}
+
+char *
+ephy_sync_crypto_encrypt_record (const char          *cleartext,
+                                 SyncCryptoKeyBundle *bundle)
+{
+  char *payload = NULL;
+  char *iv_hex;
+  char *iv_b64;
+  char *ciphertext_b64;
+  char *hmac;
+  guint8 *aes_key;
+  guint8 *hmac_key;
+  guint8 *ciphertext;
+  guint8 *iv;
+  gsize ciphertext_len;
+
+  g_return_val_if_fail (cleartext, NULL);
+  g_return_val_if_fail (bundle, NULL);
+
+  /* Get the encryption key and the HMAC key. */
+  aes_key = ephy_sync_crypto_decode_hex (bundle->aes_key_hex);
+  hmac_key = ephy_sync_crypto_decode_hex (bundle->hmac_key_hex);
+  if (!aes_key || !hmac_key) {
+    g_warning ("The key bundle does not hold valid keys");
+    goto free_keys;
+  }
+
+  /* Generate a random 16 bytes initialization vector. */
+  iv_hex = g_malloc0 (2 * IV_LEN + 1);
+  ephy_sync_crypto_random_hex_gen (NULL, 2 * IV_LEN, (guint8 *)iv_hex);
+  iv = ephy_sync_crypto_decode_hex (iv_hex);
+  if (!iv) {
+    g_warning ("Failed to decode the hex value of IV");
+    goto free_iv;
+  }
+
+  /* Encrypt the record using the AES key. */
+  ciphertext = ephy_sync_crypto_aes_256_encrypt (cleartext, aes_key, iv, &ciphertext_len);
+  ciphertext_b64 = g_base64_encode (ciphertext, ciphertext_len);
+  iv_b64 = g_base64_encode (iv, IV_LEN);
+  /* SHA256 expects a 32 bytes key. */
+  hmac = g_compute_hmac_for_string (G_CHECKSUM_SHA256, hmac_key, 32, ciphertext_b64, -1);
+
+  /* Wrap everything up into a JSON string. Since this is going to be part of
+   * another JSON string, the double quotes need to be escaped. */
+  payload = ephy_sync_utils_build_json_string (TRUE,
+                                               "ciphertext", ciphertext_b64,
+                                               "IV", iv_b64,
+                                               "hmac", hmac,
+                                               NULL);
+
+  g_free (hmac);
+  g_free (iv_b64);
+  g_free (ciphertext_b64);
+  g_free (ciphertext);
+free_iv:
+  g_free (iv);
+  g_free (iv_hex);
+free_keys:
+  g_free (aes_key);
+  g_free (hmac_key);
+
+  return payload;
 }
 
 SyncCryptoHawkHeader *

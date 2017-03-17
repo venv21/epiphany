@@ -106,6 +106,8 @@ SyncCryptoKeyBundle    *ephy_sync_crypto_derive_key_bundle        (const guint8 
                                                                    gsize                   key_len);
 char                   *ephy_sync_crypto_decrypt_record           (const char             *payload,
                                                                    SyncCryptoKeyBundle    *bundle);
+char                   *ephy_sync_crypto_encrypt_record           (const char             *cleartext,
+                                                                   SyncCryptoKeyBundle    *bundle);
 SyncCryptoHawkHeader   *ephy_sync_crypto_compute_hawk_header      (const char             *url,
                                                                    const char             *method,
                                                                    const char             *id,
