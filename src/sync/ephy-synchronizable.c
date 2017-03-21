@@ -23,12 +23,6 @@
 
 G_DEFINE_INTERFACE (EphySynchronizable, ephy_synchronizable, JSON_TYPE_SERIALIZABLE);
 
-enum {
-  PROP_0,
-  PROP_ID,
-  LAST_PROP
-};
-
 static void
 ephy_synchronizable_default_init (EphySynchronizableInterface *iface)
 {
