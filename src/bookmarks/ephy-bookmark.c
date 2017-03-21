@@ -32,6 +32,11 @@
 #include "ephy-sync-utils.h"
 #endif
 
+#define BOOKMARK_TYPE_VAL            "bookmark"
+#define BOOKMARK_PARENT_ID_VAL       "toolbar"
+#define BOOKMARK_PARENT_NAME_VAL     "Bookmarks Toolbar"
+#define BOOKMARK_LOAD_IN_SIDEBAR_VAL FALSE
+
 struct _EphyBookmark {
   GObject      parent_instance;
 
@@ -40,9 +45,13 @@ struct _EphyBookmark {
   GSequence   *tags;
   gint64       time_added;
 
-  /* Keep the modified timestamp as double, and not float, to
-   * preserve the precision enforced by the Storage Server. */
+  /* Firefox Sync specific fields.
+   * Modified timestamp must be double to match server's precision. */
   char        *id;
+  char        *type;
+  char        *parent_id;
+  char        *parent_name;
+  gboolean     load_in_sidebar;
   double       modified;
   gboolean     uploaded;
 };
@@ -61,12 +70,18 @@ G_DEFINE_TYPE_WITH_CODE (EphyBookmark, ephy_bookmark, G_TYPE_OBJECT,
 
 enum {
   PROP_0,
-  PROP_TAGS,
+  /* Epiphany specific properties. */
   PROP_TIME_ADDED,
+  /* Firefox specific properties (some of these are used by Epiphany too). */
   PROP_TITLE,
-  PROP_URL,
+  PROP_BMK_URI,
+  PROP_TAGS,
+  PROP_TYPE,
+  PROP_PARENT_ID,
+  PROP_PARENT_NAME,
+  PROP_LOAD_IN_SIDEBAR,
   LAST_PROP,
-  /* Firefox related properties. */
+  /* Interface properties. */
   PROP_ID
 };
 
@@ -88,19 +103,34 @@ ephy_bookmark_set_property (GObject      *object,
   EphyBookmark *self = EPHY_BOOKMARK (object);
 
   switch (prop_id) {
-    case PROP_TAGS:
-      if (self->tags != NULL)
-        g_sequence_free (self->tags);
-      self->tags = g_value_get_pointer (value);
-      break;
     case PROP_TIME_ADDED:
       ephy_bookmark_set_time_added (self, g_value_get_int64 (value));
       break;
     case PROP_TITLE:
       ephy_bookmark_set_title (self, g_value_get_string (value));
       break;
-    case PROP_URL:
+    case PROP_BMK_URI:
       ephy_bookmark_set_url (self, g_value_get_string (value));
+      break;
+    case PROP_TAGS:
+      if (self->tags != NULL)
+        g_sequence_free (self->tags);
+      self->tags = g_value_get_pointer (value);
+      break;
+    case PROP_TYPE:
+      g_free (self->type);
+      self->type = g_strdup (g_value_get_string (value));
+      break;
+    case PROP_PARENT_ID:
+      g_free (self->parent_id);
+      self->parent_id = g_strdup (g_value_get_string (value));
+      break;
+    case PROP_PARENT_NAME:
+      g_free (self->parent_name);
+      self->parent_name = g_strdup (g_value_get_string (value));
+      break;
+    case PROP_LOAD_IN_SIDEBAR:
+      self->load_in_sidebar = g_value_get_boolean (value);
       break;
     case PROP_ID:
       ephy_bookmark_set_id (self, g_value_get_string (value));
@@ -111,25 +141,37 @@ ephy_bookmark_set_property (GObject      *object,
 }
 
 static void
-ephy_bookmark_get_property (GObject      *object,
-                            guint         prop_id,
-                            GValue       *value,
-                            GParamSpec   *pspec)
+ephy_bookmark_get_property (GObject    *object,
+                            guint       prop_id,
+                            GValue     *value,
+                            GParamSpec *pspec)
 {
   EphyBookmark *self = EPHY_BOOKMARK (object);
 
   switch (prop_id) {
-    case PROP_TAGS:
-      g_value_set_pointer (value, ephy_bookmark_get_tags (self));
-      break;
     case PROP_TIME_ADDED:
       g_value_set_int64 (value, ephy_bookmark_get_time_added (self));
       break;
     case PROP_TITLE:
       g_value_set_string (value, ephy_bookmark_get_title (self));
       break;
-    case PROP_URL:
+    case PROP_BMK_URI:
       g_value_set_string (value, ephy_bookmark_get_url (self));
+      break;
+    case PROP_TAGS:
+      g_value_set_pointer (value, ephy_bookmark_get_tags (self));
+      break;
+    case PROP_TYPE:
+      g_value_set_string (value, self->type);
+      break;
+    case PROP_PARENT_ID:
+      g_value_set_string (value, self->parent_id);
+      break;
+    case PROP_PARENT_NAME:
+      g_value_set_string (value, self->parent_name);
+      break;
+    case PROP_LOAD_IN_SIDEBAR:
+      g_value_set_boolean (value, self->load_in_sidebar);
       break;
     case PROP_ID:
       g_value_set_string (value, ephy_bookmark_get_id (self));
@@ -162,12 +204,6 @@ ephy_bookmark_class_init (EphyBookmarkClass *klass)
   object_class->get_property = ephy_bookmark_get_property;
   object_class->finalize = ephy_bookmark_finalize;
 
-  obj_properties[PROP_TAGS] =
-    g_param_spec_pointer ("tags",
-                          "Tags",
-                          "The bookmark's tags",
-                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
-
   obj_properties[PROP_TIME_ADDED] =
     g_param_spec_int64 ("time-added",
                         "Time added",
@@ -184,12 +220,46 @@ ephy_bookmark_class_init (EphyBookmarkClass *klass)
                          "Default bookmark title",
                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
 
-  obj_properties[PROP_URL] =
-    g_param_spec_string ("url",
-                         "URL",
-                         "The bookmark's URL",
+  obj_properties[PROP_BMK_URI] =
+    g_param_spec_string ("bmkUri",
+                         "URI",
+                         "The bookmark's URI",
                          "about:overview",
                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
+
+  obj_properties[PROP_TAGS] =
+    g_param_spec_pointer ("tags",
+                          "Tags",
+                          "The bookmark's tags",
+                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
+
+  obj_properties[PROP_TYPE] =
+    g_param_spec_string ("type",
+                         "Type",
+                         "Of type bookmark",
+                         "default",
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
+
+  obj_properties[PROP_PARENT_ID] =
+    g_param_spec_string ("parentid",
+                         "ParentID",
+                         "The parent's id",
+                         "default",
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
+
+  obj_properties[PROP_PARENT_NAME] =
+    g_param_spec_string ("parentName",
+                         "ParentName",
+                         "The parent's name",
+                         "default",
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
+
+  obj_properties[PROP_LOAD_IN_SIDEBAR] =
+    g_param_spec_boolean ("loadInSidebar",
+                          "LoadInSiderbar",
+                          "Load in sidebar",
+                          TRUE,
+                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, LAST_PROP, obj_properties);
   g_object_class_override_property (object_class, PROP_ID, "id");
@@ -242,9 +312,10 @@ ephy_bookmark_json_serializable_serialize_property (JsonSerializable *serializab
     }
 
     json_node_set_array (node, array);
+  } else if (!g_strcmp0 (name, "time-added")) {
+    /* This is not a Firefox bookmark property, skip it.  */
   } else {
-    node = serializable_iface->serialize_property (serializable, name,
-                                                   value, pspec);
+    node = serializable_iface->serialize_property (serializable, name, value, pspec);
   }
 
   return node;
@@ -398,10 +469,14 @@ ephy_bookmark_new (const char *url,
                    const char *id)
 {
   return g_object_new (EPHY_TYPE_BOOKMARK,
-                       "url", url,
-                       "title", title,
-                       "tags", tags,
                        "time-added", g_get_real_time (),
+                       "title", title,
+                       "bmkUri", url,
+                       "tags", tags,
+                       "type", BOOKMARK_TYPE_VAL,
+                       "parentid", BOOKMARK_PARENT_ID_VAL,
+                       "parentName", BOOKMARK_PARENT_NAME_VAL,
+                       "loadInSidebar", BOOKMARK_LOAD_IN_SIDEBAR_VAL,
                        "id", id,
                        NULL);
 }

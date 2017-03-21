@@ -345,7 +345,7 @@ ephy_bookmark_properties_grid_constructed (GObject *object)
     self->prev_address = g_strdup (gtk_entry_get_text (GTK_ENTRY (self->address_entry)));
 
     g_object_bind_property (GTK_ENTRY (self->address_entry), "text",
-                            self->bookmark, "url",
+                            self->bookmark, "bmkUri",
                             G_BINDING_DEFAULT);
   }
 

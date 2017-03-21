@@ -267,7 +267,7 @@ ephy_bookmarks_manager_watch_bookmark (EphyBookmarksManager *self,
 {
   g_signal_connect_object (bookmark, "notify::title",
                            G_CALLBACK (bookmark_title_changed_cb), self, 0);
-  g_signal_connect_object (bookmark, "notify::url",
+  g_signal_connect_object (bookmark, "notify::bmkUri",
                            G_CALLBACK (bookmark_url_changed_cb), self, 0);
   g_signal_connect_object (bookmark, "tag-added",
                            G_CALLBACK (bookmark_tag_added_cb), self, 0);
