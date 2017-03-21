@@ -33,6 +33,10 @@ static void
 ephy_synchronizable_default_init (EphySynchronizableInterface *iface)
 {
   iface->get_id = ephy_synchronizable_get_id;
+  iface->get_modification_time = ephy_synchronizable_get_modification_time;
+  iface->set_modification_time = ephy_synchronizable_set_modification_time;
+  iface->is_uploaded = ephy_synchronizable_is_uploaded;
+  iface->set_is_uploaded = ephy_synchronizable_set_is_uploaded;
   iface->to_bso = ephy_synchronizable_to_bso;
 
   g_object_interface_install_property (iface,
@@ -60,6 +64,101 @@ ephy_synchronizable_get_id (EphySynchronizable *synchronizable)
 
   iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
   return iface->get_id (synchronizable);
+}
+
+/**
+ * ephy_synchronizable_set_id:
+ * @synchronizable: an #EphySynchronizable
+ * @id: @synchronizable's new id
+ *
+ * Sets @id as @synchronizable's id.
+ **/
+void
+ephy_synchronizable_set_id (EphySynchronizable *synchronizable,
+                            const char         *id)
+{
+  EphySynchronizableInterface *iface;
+
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
+  iface->set_id (synchronizable, id);
+}
+
+/**
+ * ephy_synchronizable_get_modification_time:
+ * @synchronizable: an #EphySynchronizable
+ *
+ * Returns @synchronizable's last modification time.
+ *
+ * Return value: @synchronizable's last modification time
+ **/
+double
+ephy_synchronizable_get_modification_time (EphySynchronizable *synchronizable)
+{
+  EphySynchronizableInterface *iface;
+
+  g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable), 0);
+
+  iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
+  return iface->get_modification_time (synchronizable);
+}
+
+/**
+ * ephy_synchronizable_set_modification_time:
+ * @synchronizable: an #EphySynchronizable
+ * @modified: the last modification time
+ *
+ * Sets @modified as @synchronizable's last modification time.
+ **/
+void
+ephy_synchronizable_set_modification_time (EphySynchronizable *synchronizable,
+                                           double              modified)
+{
+  EphySynchronizableInterface *iface;
+
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
+  iface->set_modification_time (synchronizable, modified);
+}
+
+/**
+ * ephy_synchronizable_is_uploaded:
+ * @synchronizable: an #EphySynchronizable
+ *
+ * Returns TRUE is @synchronizable is uploaded to server, FALSE otherwise.
+ *
+ * Return value: TRUE if @synchronizable is uploaded, FALSE otherwise
+ **/
+gboolean
+ephy_synchronizable_is_uploaded (EphySynchronizable *synchronizable)
+{
+  EphySynchronizableInterface *iface;
+
+  g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable), FALSE);
+
+  iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
+  return iface->is_uploaded (synchronizable);
+}
+
+/**
+ * ephy_synchronizable_set_is_uploaded:
+ * @synchronizable: an #EphySynchronizable
+ * @uploaded: TRUE if @synchronizable is uploaded to server, FALSE otherwise
+ *
+ * Sets @synchronizable's uploaded flag.
+ **/
+void
+ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
+                                     gboolean            uploaded)
+{
+  EphySynchronizableInterface *iface;
+
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
+  iface->set_is_uploaded (synchronizable, uploaded);
 }
 
 /**
