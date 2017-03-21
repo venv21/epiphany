@@ -13,6 +13,7 @@ ephy_profile_migrator_CPPFLAGS = \
 	-I$(top_srcdir)/lib/history			\
 	-I$(top_srcdir)/src/				\
 	-I$(top_srcdir)/src/bookmarks			\
+	-I$(top_srcdir)/src/sync			\
 	-DGETTEXT_PACKAGE=\"$(GETTEXT_PACKAGE)\" 	\
 	-DLOCALEDIR=\"$(localedir)\"			\
 	$(GLIB_CFLAGS)					\

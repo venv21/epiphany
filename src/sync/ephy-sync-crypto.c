@@ -33,6 +33,7 @@
 #define HAWK_VERSION  1
 #define NONCE_LEN     6
 #define IV_LEN        16
+#define SYNC_ID_LEN   12
 
 static const char hex_digits[] = "0123456789abcdef";
 
@@ -655,6 +656,27 @@ ephy_sync_crypto_hmac_is_valid (const char   *text,
   return retval;
 }
 
+/*
+ * This function is required by Nettle's RSA support.
+ * From Nettle's documentation: random_ctx and random is a randomness generator.
+ * random(random_ctx, length, dst) should generate length random octets and store them at dst.
+ * We don't really use random_ctx, since we have /dev/urandom available.
+ */
+static void
+ephy_sync_crypto_random_bytes_gen (void   *random_ctx,
+                                   gsize   length,
+                                   guint8 *dst)
+{
+  FILE *fp;
+
+  g_assert (length > 0);
+  g_assert (dst);
+
+  fp = fopen ("/dev/urandom", "r");
+  fread (dst, sizeof (guint8), length, fp);
+  fclose (fp);
+}
+
 void
 ephy_sync_crypto_process_key_fetch_token (const char  *keyFetchToken,
                                           guint8     **tokenID,
@@ -935,7 +957,6 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
                                  SyncCryptoKeyBundle *bundle)
 {
   char *payload = NULL;
-  char *iv_hex;
   char *iv_b64;
   char *ciphertext_b64;
   char *hmac;
@@ -957,13 +978,8 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
   }
 
   /* Generate a random 16 bytes initialization vector. */
-  iv_hex = g_malloc0 (2 * IV_LEN + 1);
-  ephy_sync_crypto_random_hex_gen (NULL, 2 * IV_LEN, (guint8 *)iv_hex);
-  iv = ephy_sync_crypto_decode_hex (iv_hex);
-  if (!iv) {
-    g_warning ("Failed to decode the hex value of IV");
-    goto free_iv;
-  }
+  iv = g_malloc (IV_LEN);
+  ephy_sync_crypto_random_bytes_gen (NULL, IV_LEN, iv);
 
   /* Encrypt the record using the AES key. */
   ciphertext = ephy_sync_crypto_aes_256_encrypt (cleartext, aes_key, iv, &ciphertext_len);
@@ -984,9 +1000,7 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
   g_free (iv_b64);
   g_free (ciphertext_b64);
   g_free (ciphertext);
-free_iv:
   g_free (iv);
-  g_free (iv_hex);
 free_keys:
   g_free (aes_key);
   g_free (hmac_key);
@@ -1012,6 +1026,7 @@ ephy_sync_crypto_compute_hawk_header (const char            *url,
   char *nonce;
   char *payload;
   char *timestamp;
+  guint8 *bytes;
   gint64 ts;
 
   g_return_val_if_fail (url, NULL);
@@ -1033,8 +1048,10 @@ ephy_sync_crypto_compute_hawk_header (const char            *url,
   if (options && options->nonce) {
     nonce = g_strdup (options->nonce);
   } else {
-    nonce = g_malloc0 (NONCE_LEN + 1);
-    ephy_sync_crypto_random_hex_gen (NULL, NONCE_LEN, (guint8 *)nonce);
+    bytes = g_malloc (NONCE_LEN / 2);
+    ephy_sync_crypto_random_bytes_gen (NULL, NONCE_LEN / 2, bytes);
+    nonce = ephy_sync_crypto_encode_hex (bytes, NONCE_LEN / 2);
+    g_free (bytes);
   }
 
   if (timestamp) {
@@ -1127,7 +1144,7 @@ ephy_sync_crypto_generate_rsa_key_pair (void)
 
   /* Key sizes below 2048 are considered breakable and should not be used. */
   retval = rsa_generate_keypair (&public, &private,
-                                 NULL, ephy_sync_crypto_random_hex_gen,
+                                 NULL, ephy_sync_crypto_random_bytes_gen,
                                  NULL, NULL, 2048, 0);
   if (retval == 0) {
     g_warning ("Failed to generate RSA key pair");
@@ -1178,7 +1195,7 @@ ephy_sync_crypto_create_assertion (const char           *certificate,
   /* Use the provided key pair to RSA sign the message. */
   mpz_init (signature);
   if (rsa_sha256_sign_digest_tr (&keypair->public, &keypair->private,
-                                 NULL, ephy_sync_crypto_random_hex_gen,
+                                 NULL, ephy_sync_crypto_random_bytes_gen,
                                  digest, signature) == 0) {
     g_warning ("Failed to sign the message. Giving up.");
     goto out;
@@ -1209,32 +1226,6 @@ out:
   mpz_clear (signature);
 
   return assertion;
-}
-
-void
-ephy_sync_crypto_random_hex_gen (void   *ctx,
-                                 gsize   length,
-                                 guint8 *dst)
-{
-  FILE *fp;
-  gsize num_bytes;
-  guint8 *bytes;
-  char *hex;
-
-  g_assert (length > 0);
-  num_bytes = (length + 1) / 2;
-  bytes = g_malloc (num_bytes);
-
-  fp = fopen ("/dev/urandom", "r");
-  fread (bytes, sizeof (guint8), num_bytes, fp);
-  hex = ephy_sync_crypto_encode_hex (bytes, num_bytes);
-
-  for (gsize i = 0; i < length; i++)
-    dst[i] = hex[i];
-
-  g_free (bytes);
-  g_free (hex);
-  fclose (fp);
 }
 
 char *
@@ -1378,4 +1369,27 @@ ephy_sync_crypto_decode_hex (const char *hex)
     sscanf(hex + i, "%2hhx", retval + j);
 
   return retval;
+}
+
+char *
+ephy_sync_crypto_get_random_sync_id (void)
+{
+  char *id;
+  char *base64;
+  guint8 *bytes;
+  gsize bytes_len;
+
+  /* The sync id is a base64-urlsafe string. Base64 uses 4 chars to represent 3 bytes,
+   * therefore we need ceil(len * 3 / 4) bytes to cover the requested length. */
+  bytes_len = (SYNC_ID_LEN + 3) / 4 * 3;
+  bytes = g_malloc (bytes_len);
+
+  ephy_sync_crypto_random_bytes_gen (NULL, bytes_len, bytes);
+  base64 = ephy_sync_crypto_base64_urlsafe_encode (bytes, bytes_len, FALSE);
+  id = g_strndup (base64, SYNC_ID_LEN);
+
+  g_free (base64);
+  g_free (bytes);
+
+  return id;
 }

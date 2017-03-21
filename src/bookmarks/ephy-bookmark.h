@@ -31,7 +31,8 @@ G_DECLARE_FINAL_TYPE (EphyBookmark, ephy_bookmark, EPHY, BOOKMARK, GObject)
 
 EphyBookmark        *ephy_bookmark_new                   (const char *url,
                                                           const char *title,
-                                                          GSequence  *tags);
+                                                          GSequence  *tags,
+                                                          const char *id);
 
 void                 ephy_bookmark_set_time_added        (EphyBookmark *self,
                                                           gint64        time_added);

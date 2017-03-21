@@ -119,9 +119,6 @@ char                   *ephy_sync_crypto_create_assertion         (const char   
                                                                    const char             *audience,
                                                                    guint64                 duration,
                                                                    SyncCryptoRSAKeyPair   *keypair);
-void                    ephy_sync_crypto_random_hex_gen           (void                   *ctx,
-                                                                   gsize                   length,
-                                                                   guint8                 *dst);
 char                   *ephy_sync_crypto_base64_urlsafe_encode    (const guint8           *data,
                                                                    gsize                   data_len,
                                                                    gboolean                strip);
@@ -136,5 +133,6 @@ guint8                 *ephy_sync_crypto_aes_256                  (SyncCryptoAES
 char                   *ephy_sync_crypto_encode_hex               (const guint8           *data,
                                                                    gsize                   data_len);
 guint8                 *ephy_sync_crypto_decode_hex               (const char             *hex);
+char                   *ephy_sync_crypto_get_random_sync_id       (void);
 
 G_END_DECLS

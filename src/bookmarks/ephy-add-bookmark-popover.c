@@ -32,7 +32,6 @@ struct _EphyAddBookmarkPopover {
   GtkPopover     parent_instance;
 
   char          *address;
-  gboolean       is_new_bookmark;
 
   GtkWidget     *grid;
   EphyHeaderBar *header_bar;
@@ -206,14 +205,17 @@ ephy_add_bookmark_popover_show (EphyAddBookmarkPopover *self)
 
   bookmark = ephy_bookmarks_manager_get_bookmark_by_url (manager, address);
   if (!bookmark) {
+    char *id = ephy_sync_crypto_get_random_sync_id ();
     bookmark = ephy_bookmark_new (address,
                                   ephy_embed_get_title (embed),
-                                  g_sequence_new (g_free));
+                                  g_sequence_new (g_free),
+                                  id);
 
     ephy_bookmarks_manager_add_bookmark (manager, bookmark);
     ephy_location_entry_set_bookmark_icon_state (location_entry,
                                                  EPHY_LOCATION_ENTRY_BOOKMARK_ICON_BOOKMARKED);
     g_object_unref (bookmark);
+    g_free (id);
   }
 
   g_signal_connect_object (manager, "bookmark-removed",
