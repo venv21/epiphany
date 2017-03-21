@@ -164,7 +164,6 @@ ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
 /**
  * ephy_synchronizable_to_bso:
  * @synchronizable: an #EphySynchronizable
- * @error: return location for a #GError, or %NULL
  *
  * Converts an #EphySynchronizable into its string representation
  * of a Basic Storage Object from the client's point of view
@@ -175,22 +174,20 @@ ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
  * Return value: (transfer full): @synchronizable's BSO's string representation
  **/
 char *
-ephy_synchronizable_to_bso (EphySynchronizable  *synchronizable,
-                            GError             **error)
+ephy_synchronizable_to_bso (EphySynchronizable *synchronizable)
 {
   EphySynchronizableInterface *iface;
 
   g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable), NULL);
 
   iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
-  return iface->to_bso (synchronizable, error);
+  return iface->to_bso (synchronizable);
 }
 
 /**
  * ephy_synchronizable_from_bso:
  * @bso: an #JsonObject holding the JSON representation of a Basic Storage Object
  * @gtype: the #GType of object to construct
- * @error: return location for a #GError, or %NULL
  *
  * Converts a JSON representation of a Basic Storage Object
  * from the server's point of view (i.e. the %modified field is present)
@@ -205,9 +202,8 @@ ephy_synchronizable_to_bso (EphySynchronizable  *synchronizable,
  *  Return value: (transfer full): a #GObject or %NULL
  **/
 GObject *
-ephy_synchronizable_from_bso (JsonObject  *bso,
-                              GType        gtype,
-                              GError     **error)
+ephy_synchronizable_from_bso (JsonObject *bso,
+                              GType       gtype)
 {
   g_return_val_if_fail (bso, NULL);
 

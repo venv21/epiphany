@@ -346,8 +346,7 @@ ephy_bookmark_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable
 }
 
 static char *
-ephy_bookmark_synchronizable_to_bso (EphySynchronizable  *synchronizable,
-                                     GError             **error)
+ephy_bookmark_synchronizable_to_bso (EphySynchronizable *synchronizable)
 {
   return NULL;
 }

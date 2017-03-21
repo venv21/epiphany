@@ -36,37 +36,34 @@ G_DECLARE_INTERFACE (EphySynchronizable, ephy_synchronizable, EPHY, SYNCHRONIZAB
 struct _EphySynchronizableInterface {
   GTypeInterface parent_iface;
 
-  const char * (*get_id)                  (EphySynchronizable  *synchronizable);
-  void         (*set_id)                  (EphySynchronizable  *synchronizable,
-                                           const char          *id);
+  const char * (*get_id)                  (EphySynchronizable *synchronizable);
+  void         (*set_id)                  (EphySynchronizable *synchronizable,
+                                           const char         *id);
 
-  double       (*get_modification_time)   (EphySynchronizable  *synchronizable);
-  void         (*set_modification_time)   (EphySynchronizable  *synchronizable,
-                                           double               modified);
+  double       (*get_modification_time)   (EphySynchronizable *synchronizable);
+  void         (*set_modification_time)   (EphySynchronizable *synchronizable,
+                                           double              modified);
 
-  gboolean     (*is_uploaded)             (EphySynchronizable  *synchronizable);
-  void         (*set_is_uploaded)         (EphySynchronizable  *synchronizable,
-                                           gboolean             uploaded);
+  gboolean     (*is_uploaded)             (EphySynchronizable *synchronizable);
+  void         (*set_is_uploaded)         (EphySynchronizable *synchronizable,
+                                           gboolean            uploaded);
 
-  char *       (*to_bso)                  (EphySynchronizable  *synchronizable,
-                                           GError             **error);
+  char *       (*to_bso)                  (EphySynchronizable *synchronizable);
 };
 
-const char          *ephy_synchronizable_get_id                 (EphySynchronizable  *synchronizable);
-void                 ephy_synchronizable_set_id                 (EphySynchronizable  *synchronizable,
-                                                                 const char          *id);
-double               ephy_synchronizable_get_modification_time  (EphySynchronizable  *synchronizable);
-void                 ephy_synchronizable_set_modification_time  (EphySynchronizable  *synchronizable,
-                                                                 double               modified);
-gboolean             ephy_synchronizable_is_uploaded            (EphySynchronizable  *synchronizable);
-void                 ephy_synchronizable_set_is_uploaded        (EphySynchronizable  *synchronizable,
-                                                                 gboolean             uploaded);
-char                *ephy_synchronizable_to_bso                 (EphySynchronizable  *synchronizable,
-                                                                 GError             **error);
+const char          *ephy_synchronizable_get_id                 (EphySynchronizable *synchronizable);
+void                 ephy_synchronizable_set_id                 (EphySynchronizable *synchronizable,
+                                                                 const char         *id);
+double               ephy_synchronizable_get_modification_time  (EphySynchronizable *synchronizable);
+void                 ephy_synchronizable_set_modification_time  (EphySynchronizable *synchronizable,
+                                                                 double              modified);
+gboolean             ephy_synchronizable_is_uploaded            (EphySynchronizable *synchronizable);
+void                 ephy_synchronizable_set_is_uploaded        (EphySynchronizable *synchronizable,
+                                                                 gboolean            uploaded);
+char                *ephy_synchronizable_to_bso                 (EphySynchronizable *synchronizable);
 /* This can't be an interface method because we lack the EphySynchronizable object.
  * Think of it as more of an utility function. */
-GObject             *ephy_synchronizable_from_bso   (JsonObject  *bso,
-                                                     GType        gtype,
-                                                     GError     **error);
+GObject             *ephy_synchronizable_from_bso   (JsonObject *bso,
+                                                     GType       gtype);
 
 G_END_DECLS
