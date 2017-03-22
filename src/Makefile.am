@@ -78,6 +78,8 @@ if ENABLE_SYNC
 libephymain_la_SOURCES += \
 	sync/ephy-synchronizable.c		\
 	sync/ephy-synchronizable.h		\
+	sync/ephy-synchronizable-manager.c	\
+	sync/ephy-synchronizable-manager.h	\
 	sync/ephy-sync-crypto.c			\
 	sync/ephy-sync-crypto.h			\
 	sync/ephy-sync-secret.c			\
