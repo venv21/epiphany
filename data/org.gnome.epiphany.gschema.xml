@@ -6,6 +6,7 @@
 		<child schema="org.gnome.Epiphany.state" name="state"/>
 		<child schema="org.gnome.Epiphany.lockdown" name="lockdown"/>
 		<child schema="org.gnome.Epiphany.permissions" name="permissions"/>
+		<child schema="org.gnome.Epiphany.sync" name="sync"/>
 		<key type="b" name="enable-caret-browsing">
 			<default>false</default>
 			<summary>Browse with caret</summary>
@@ -99,16 +100,6 @@
                         <description>This option sets a limit to the number of web processes that will be used at the same time for the “one-secondary-process-per-web-view” model. The default value is “0” and means no limit.</description>
 
                 </key>
-		<key type="s" name="sync-user">
-			<default>''</default>
-			<summary>The sync user currently logged in</summary>
-			<description>The email linked to the Firefox Account used to sync data with Mozilla’s servers.</description>
-		</key>
-		<key type="d" name="sync-time">
-			<default>0</default>
-			<summary>Sync timestamp</summary>
-			<description>The timestamp at which last we had the last sync</description>
-		</key>
                 <key type="as" name="adblock-filters">
                         <default>['https://easylist.to/easylist/easylist.txt', 'https://easylist.to/easylist/easyprivacy.txt']</default>
                         <summary>List of adblock filters</summary>
@@ -273,6 +264,18 @@
 		</key>
 		<key type="b" name="disable-quit">
 			<default>false</default>
+		</key>
+	</schema>
+	<schema path="/org/gnome/Epiphany/sync/" id="org.gnome.Epiphany.sync">
+		<key type="s" name="sync-user">
+			<default>''</default>
+			<summary>Currently signed in sync user</summary>
+			<description>The email linked to the Firefox Account used to sync data with Mozilla’s servers.</description>
+		</key>
+		<key type="d" name="sync-time">
+			<default>0</default>
+			<summary>Sync timestamp</summary>
+			<description>The timestamp at which last sync was made.</description>
 		</key>
 	</schema>
 	<enum id="org.gnome.Epiphany.Permission">

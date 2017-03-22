@@ -230,7 +230,7 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     /* Show the 'Signed in' panel. */
     sync_hide_fxa_iframe (dialog, ephy_sync_service_get_user_email (service));
 
-    g_settings_set_string (EPHY_SETTINGS_MAIN,
+    g_settings_set_string (EPHY_SETTINGS_SYNC,
                            EPHY_PREFS_SYNC_USER,
                            ephy_sync_service_get_user_email (service));
 

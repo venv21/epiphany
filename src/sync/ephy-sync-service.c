@@ -683,7 +683,7 @@ ephy_sync_service_init (EphySyncService *self)
   user_agent = webkit_settings_get_user_agent (settings);
   g_object_set (self->session, "user-agent", user_agent, NULL);
 
-  email = g_settings_get_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER);
+  email = g_settings_get_string (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_USER);
 
   if (g_strcmp0 (email, "")) {
     ephy_sync_service_set_user_email (self, email);
@@ -733,7 +733,7 @@ ephy_sync_service_get_sync_time (EphySyncService *self)
   if (self->sync_time != 0)
     return self->sync_time;
 
-  self->sync_time = g_settings_get_double (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_TIME);
+  self->sync_time = g_settings_get_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_TIME);
   return self->sync_time;
 }
 
@@ -745,7 +745,7 @@ ephy_sync_service_set_sync_time (EphySyncService *self,
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
 
   self->sync_time = time;
-  g_settings_set_double (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_TIME, time);
+  g_settings_set_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_TIME, time);
 }
 
 const char *
@@ -1189,7 +1189,7 @@ ephy_sync_service_do_sign_out (EphySyncService *self)
   ephy_sync_service_set_user_email (self, NULL);
   ephy_sync_service_set_sync_time (self, 0);
 
-  g_settings_set_string (EPHY_SETTINGS_MAIN, EPHY_PREFS_SYNC_USER, "");
+  g_settings_set_string (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_USER, "");
 }
 
 static void
