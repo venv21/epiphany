@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "ephy-sync-crypto.h"
+
 #include <glib-object.h>
 #include <json-glib/json-glib.h>
 
@@ -51,19 +53,20 @@ struct _EphySynchronizableInterface {
   char *       (*to_bso)                  (EphySynchronizable *synchronizable);
 };
 
-const char          *ephy_synchronizable_get_id                 (EphySynchronizable *synchronizable);
-void                 ephy_synchronizable_set_id                 (EphySynchronizable *synchronizable,
-                                                                 const char         *id);
-double               ephy_synchronizable_get_modification_time  (EphySynchronizable *synchronizable);
-void                 ephy_synchronizable_set_modification_time  (EphySynchronizable *synchronizable,
-                                                                 double              modified);
-gboolean             ephy_synchronizable_is_uploaded            (EphySynchronizable *synchronizable);
-void                 ephy_synchronizable_set_is_uploaded        (EphySynchronizable *synchronizable,
-                                                                 gboolean            uploaded);
-char                *ephy_synchronizable_to_bso                 (EphySynchronizable *synchronizable);
+const char          *ephy_synchronizable_get_id                 (EphySynchronizable  *synchronizable);
+void                 ephy_synchronizable_set_id                 (EphySynchronizable  *synchronizable,
+                                                                 const char          *id);
+double               ephy_synchronizable_get_modification_time  (EphySynchronizable  *synchronizable);
+void                 ephy_synchronizable_set_modification_time  (EphySynchronizable  *synchronizable,
+                                                                 double               modified);
+gboolean             ephy_synchronizable_is_uploaded            (EphySynchronizable  *synchronizable);
+void                 ephy_synchronizable_set_is_uploaded        (EphySynchronizable  *synchronizable,
+                                                                 gboolean             uploaded);
+char                *ephy_synchronizable_to_bso                 (EphySynchronizable  *synchronizable);
 /* This can't be an interface method because we lack the EphySynchronizable object.
  * Think of it as more of an utility function. */
-GObject             *ephy_synchronizable_from_bso   (JsonObject *bso,
-                                                     GType       gtype);
+GObject             *ephy_synchronizable_from_bso               (JsonObject          *bso,
+                                                                 GType                gtype,
+                                                                 SyncCryptoKeyBundle *bundle);
 
 G_END_DECLS

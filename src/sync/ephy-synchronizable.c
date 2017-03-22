@@ -159,13 +159,13 @@ ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
  * ephy_synchronizable_to_bso:
  * @synchronizable: an #EphySynchronizable
  *
- * Converts an #EphySynchronizable into its string representation
+ * Converts an #EphySynchronizable into its JSON string representation
  * of a Basic Storage Object from the client's point of view
  * (i.e. the %modified field is missing). Check the BSO format documentation
  * (https://docs.services.mozilla.com/storage/apis-1.5.html#basic-storage-object)
  * for more details.
  *
- * Return value: (transfer full): @synchronizable's BSO's string representation
+ * Return value: (transfer full): @synchronizable's BSO's JSON string representation
  **/
 char *
 ephy_synchronizable_to_bso (EphySynchronizable *synchronizable)
@@ -180,12 +180,14 @@ ephy_synchronizable_to_bso (EphySynchronizable *synchronizable)
 
 /**
  * ephy_synchronizable_from_bso:
- * @bso: an #JsonObject holding the JSON representation of a Basic Storage Object
+ * @bso: a JSON object representing the Basic Storage Object
  * @gtype: the #GType of object to construct
+ * @bundle: a %SyncCryptoKeyBundle holding the encryption key and the HMAC key
+ *          used to validate and decrypt the Basic Storage Object
  *
- * Converts a JSON representation of a Basic Storage Object
+ * Converts a JSON object representing the Basic Storage Object
  * from the server's point of view (i.e. the %modified field is present)
- * into an object of type @gtype. Check the BSO format documentation
+ * into an object of type @gtype. See the BSO format documentation
  * (https://docs.services.mozilla.com/storage/apis-1.5.html#basic-storage-object)
  * for more details.
  *
@@ -196,12 +198,46 @@ ephy_synchronizable_to_bso (EphySynchronizable *synchronizable)
  *  Return value: (transfer full): a #GObject or %NULL
  **/
 GObject *
-ephy_synchronizable_from_bso (JsonObject *bso,
-                              GType       gtype)
+ephy_synchronizable_from_bso (JsonObject          *bso,
+                              GType                gtype,
+                              SyncCryptoKeyBundle *bundle)
 {
+  GObject *object = NULL;
+  GError *error = NULL;
+  char *serialized;
+  const char *payload;
+  double modified;
+
   g_return_val_if_fail (bso, NULL);
+  g_return_val_if_fail (bundle, NULL);
 
-  /* TODO: Implement this. */
+  if (!json_object_has_member (bso, "id") ||
+      !json_object_has_member (bso, "payload") ||
+      !json_object_has_member (bso, "modified")) {
+    g_warning ("BSO has missing members");
+    goto out;
+  }
 
-  return NULL;
+  payload = json_object_get_string_member (bso, "payload");
+  modified = json_object_get_double_member (bso, "modified");
+  serialized = ephy_sync_crypto_decrypt_record (payload, bundle);
+  if (!serialized) {
+    g_warning ("Failed to decrypt the BSO payload");
+    goto out;
+  }
+
+  object = json_gobject_from_data (gtype, serialized, -1, &error);
+  if (error) {
+    g_warning ("Failed to create GObject from BSO: %s", error->message);
+    g_error_free (error);
+    goto free_serialized;
+  }
+
+  ephy_synchronizable_set_modification_time (EPHY_SYNCHRONIZABLE (object), modified);
+  ephy_synchronizable_set_is_uploaded (EPHY_SYNCHRONIZABLE (object), TRUE);
+
+free_serialized:
+  g_free (serialized);
+out:
+  return object;
 }
