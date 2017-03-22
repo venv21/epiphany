@@ -57,7 +57,6 @@ struct _EphyBookmark {
 };
 
 static JsonSerializableIface *serializable_iface = NULL;
-static EphySynchronizableInterface *synchronizable_iface = NULL;
 
 static void json_serializable_iface_init (gpointer g_iface);
 static void ephy_synchronizable_iface_init (EphySynchronizableInterface *iface);
@@ -451,8 +450,6 @@ free_serialized:
 static void
 ephy_synchronizable_iface_init (EphySynchronizableInterface *iface)
 {
-  synchronizable_iface = g_type_default_interface_peek (EPHY_TYPE_SYNCHRONIZABLE);
-
   iface->get_id = ephy_bookmark_synchronizable_get_id;
   iface->set_id = ephy_bookmark_synchronizable_set_id;
   iface->get_modification_time = ephy_bookmark_synchronizable_get_modification_time;
