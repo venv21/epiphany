@@ -189,7 +189,8 @@ ephy_bookmark_finalize (GObject *object)
   g_free (self->title);
   g_free (self->id);
 
-  g_sequence_free (self->tags);
+  if (self->tags)
+    g_sequence_free (self->tags);
 
   G_OBJECT_CLASS (ephy_bookmark_parent_class)->finalize (object);
 }
@@ -304,10 +305,12 @@ ephy_bookmark_json_serializable_serialize_property (JsonSerializable *serializab
     array = json_array_new ();
     tags = g_value_get_pointer (value);
 
-    for (iter = g_sequence_get_begin_iter (tags);
-         !g_sequence_iter_is_end (iter);
-         iter = g_sequence_iter_next (iter)) {
-      json_array_add_string_element (array, g_sequence_get (iter));
+    if (tags != NULL) {
+      for (iter = g_sequence_get_begin_iter (tags);
+           !g_sequence_iter_is_end (iter);
+           iter = g_sequence_iter_next (iter)) {
+        json_array_add_string_element (array, g_sequence_get (iter));
+      }
     }
 
     json_node_set_array (node, array);
