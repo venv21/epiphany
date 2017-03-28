@@ -543,8 +543,8 @@ ephy_bookmarks_manager_remove_bookmark (EphyBookmarksManager *self,
   for (iter = g_sequence_get_begin_iter (self->bookmarks);
          !g_sequence_iter_is_end (iter);
          iter = g_sequence_iter_next (iter)) {
-    if (g_strcmp0 (ephy_bookmark_get_url (g_sequence_get (iter)),
-                   ephy_bookmark_get_url (bookmark)) == 0)
+    if (g_strcmp0 (ephy_bookmark_get_id (g_sequence_get (iter)),
+                   ephy_bookmark_get_id (bookmark)) == 0)
       break;
   }
   g_assert (!g_sequence_iter_is_end (iter));
