@@ -54,6 +54,8 @@ struct _EphySyncService {
   char        *kB;
   GHashTable  *key_bundles;
 
+  GHashTable  *managers;
+
   char        *user_email;
   double       sync_time;
   gint64       auth_at;
@@ -614,6 +616,7 @@ ephy_sync_service_finalize (GObject *object)
 
   g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_request_async_data_free);
   g_hash_table_destroy (self->key_bundles);
+  g_hash_table_destroy (self->managers);
 
   G_OBJECT_CLASS (ephy_sync_service_parent_class)->finalize (object);
 }
@@ -678,6 +681,7 @@ ephy_sync_service_init (EphySyncService *self)
   self->storage_queue = g_queue_new ();
   self->key_bundles = g_hash_table_new_full (g_str_hash, g_str_equal,
                                              NULL, (GDestroyNotify)ephy_sync_crypto_key_bundle_free);
+  self->managers = g_hash_table_new (g_str_hash, g_str_equal);
 
   settings = ephy_embed_prefs_get_settings ();
   user_agent = webkit_settings_get_user_agent (settings);
@@ -806,6 +810,32 @@ ephy_sync_service_get_key_bundle (EphySyncService *self,
     bundle = g_hash_table_lookup (self->key_bundles, "default");
 
   return bundle;
+}
+
+void
+ephy_sync_service_register_manager (EphySyncService           *self,
+                                    EphySynchronizableManager *manager)
+{
+  const char *collection;
+
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  g_hash_table_insert (self->managers, (char *)collection, manager);
+}
+
+void
+ephy_sync_service_unregister_manager (EphySyncService           *self,
+                                      EphySynchronizableManager *manager)
+{
+  const char *collection;
+
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  g_hash_table_remove (self->managers, collection);
 }
 
 void
