@@ -325,7 +325,7 @@ sync_tokens_load_finished_cb (EphySyncService *service,
   /* If the tokens were successfully loaded, start the periodical sync.
    * Otherwise, notify the user to sign in again. */
   if (error == NULL) {
-    ephy_sync_service_start_periodical_sync (service, TRUE);
+    ephy_sync_service_start_periodical_sync (service);
   } else {
     notification = ephy_notification_new (error->message,
                                           _("Please visit Preferences and sign in "

@@ -28,11 +28,6 @@ G_BEGIN_DECLS
 
 #define EPHY_SYNC_TOKEN_LENGTH 32
 
-typedef enum {
-  AES_256_MODE_ENCRYPT,
-  AES_256_MODE_DECRYPT
-} SyncCryptoAES256Mode;
-
 typedef struct {
   char *app;
   char *dlg;
@@ -125,11 +120,6 @@ char                   *ephy_sync_crypto_base64_urlsafe_encode    (const guint8 
 guint8                 *ephy_sync_crypto_base64_urlsafe_decode    (const char             *text,
                                                                    gsize                  *out_len,
                                                                    gboolean                fill);
-guint8                 *ephy_sync_crypto_aes_256                  (SyncCryptoAES256Mode    mode,
-                                                                   const guint8           *key,
-                                                                   const guint8           *data,
-                                                                   gsize                   data_len,
-                                                                   gsize                  *out_len);
 char                   *ephy_sync_crypto_encode_hex               (const guint8           *data,
                                                                    gsize                   data_len);
 guint8                 *ephy_sync_crypto_decode_hex               (const char             *hex);

@@ -66,13 +66,6 @@ ephy_sync_utils_build_json_string (gboolean    escape,
 }
 
 char *
-ephy_sync_utils_create_bso_json (const char *id,
-                                 const char *payload)
-{
-  return ephy_sync_utils_build_json_string (FALSE, "id", id, "payload", payload, NULL);
-}
-
-char *
 ephy_sync_utils_make_audience (const char *url)
 {
   SoupURI *uri;

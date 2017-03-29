@@ -250,7 +250,9 @@ ephy_bookmarks_properties_grid_actions_remove_bookmark (GSimpleAction *action,
 
 #ifdef ENABLE_SYNC
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-  ephy_sync_service_delete_bookmark (service, self->bookmark, FALSE);
+  ephy_sync_service_delete_synchronizable (service,
+                                           EPHY_SYNCHRONIZABLE_MANAGER (self->manager),
+                                           EPHY_SYNCHRONIZABLE (self->bookmark));
 #endif
   ephy_bookmarks_manager_remove_bookmark (self->manager,  self->bookmark);
 

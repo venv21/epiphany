@@ -234,9 +234,8 @@ sync_tokens_store_finished_cb (EphySyncService *service,
                            EPHY_PREFS_SYNC_USER,
                            ephy_sync_service_get_user_email (service));
 
-    /* Do a first time sync and set a periodical sync to be executed. */
-    ephy_sync_service_sync_bookmarks (service, TRUE);
-    ephy_sync_service_start_periodical_sync (service, FALSE);
+    /* Start syncing. */
+    ephy_sync_service_start_periodical_sync (service);
   } else {
     /* Destroy the current session. */
     ephy_sync_service_destroy_session (service, NULL);

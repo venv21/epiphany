@@ -272,11 +272,6 @@
 			<summary>Currently signed in sync user</summary>
 			<description>The email linked to the Firefox Account used to sync data with Mozilla’s servers.</description>
 		</key>
-		<key type="d" name="sync-time">
-			<default>0</default>
-			<summary>Sync timestamp</summary>
-			<description>The timestamp at which last sync was made.</description>
-		</key>
 		<key type="d" name="bookmarks-sync-time">
 			<default>0</default>
 			<summary>Bookmarks sync timestamp</summary>

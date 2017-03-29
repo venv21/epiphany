@@ -1286,51 +1286,6 @@ ephy_sync_crypto_base64_urlsafe_decode (const char  *text,
   return out;
 }
 
-guint8 *
-ephy_sync_crypto_aes_256 (SyncCryptoAES256Mode  mode,
-                          const guint8         *key,
-                          const guint8         *data,
-                          gsize                 data_len,
-                          gsize                *out_len)
-{
-  struct aes256_ctx aes;
-  gsize padded_len = data_len;
-  guint8 *padded_data;
-  guint8 *out;
-
-  g_return_val_if_fail (key, NULL);
-  g_return_val_if_fail (data, NULL);
-
-  /* Since Nettle enforces the length of the data to be a multiple of
-   * AES_BLOCK_SIZE, the data needs to be padded accordingly. Because any
-   * data that is decrypted has to be encrypted first, crash if the length
-   * is incorrect at decryption.
-   */
-  if (mode == AES_256_MODE_ENCRYPT)
-    padded_len = data_len + (AES_BLOCK_SIZE - data_len % AES_BLOCK_SIZE);
-  else if (mode == AES_256_MODE_DECRYPT)
-    g_assert (data_len % AES_BLOCK_SIZE == 0);
-
-  out = g_malloc0 (padded_len);
-  padded_data = g_malloc0 (padded_len);
-  memcpy (padded_data, data, data_len);
-
-  if (mode == AES_256_MODE_ENCRYPT) {
-    aes256_set_encrypt_key (&aes, key);
-    aes256_encrypt (&aes, padded_len, out, padded_data);
-  } else if (mode == AES_256_MODE_DECRYPT) {
-    aes256_set_decrypt_key (&aes, key);
-    aes256_decrypt (&aes, padded_len, out, padded_data);
-  }
-
-  if (out_len)
-    *out_len = padded_len;
-
-  g_free (padded_data);
-
-  return out;
-}
-
 char *
 ephy_sync_crypto_encode_hex (const guint8 *data,
                              gsize         data_len)

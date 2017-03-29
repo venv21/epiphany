@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "ephy-bookmark.h"
 #include "ephy-sync-crypto.h"
 #include "ephy-sync-utils.h"
 #include "ephy-synchronizable-manager.h"
@@ -39,9 +38,6 @@ gboolean             ephy_sync_service_is_signed_in               (EphySyncServi
 const char          *ephy_sync_service_get_user_email             (EphySyncService           *self);
 void                 ephy_sync_service_set_user_email             (EphySyncService           *self,
                                                                    const char                *email);
-double               ephy_sync_service_get_sync_time              (EphySyncService           *self);
-void                 ephy_sync_service_set_sync_time              (EphySyncService           *self,
-                                                                   double                     time);
 const char          *ephy_sync_service_get_token                  (EphySyncService           *self,
                                                                    EphySyncTokenType          type);
 void                 ephy_sync_service_set_token                  (EphySyncService           *self,
@@ -67,18 +63,7 @@ void                 ephy_sync_service_do_sign_out                (EphySyncServi
 void                 ephy_sync_service_delete_synchronizable      (EphySyncService           *self,
                                                                    EphySynchronizableManager *manager,
                                                                    EphySynchronizable        *synchronizable);
-void                 ephy_sync_service_upload_bookmark            (EphySyncService           *self,
-                                                                   EphyBookmark              *bookmark,
-                                                                   gboolean                   force);
-void                 ephy_sync_service_download_bookmark          (EphySyncService           *self,
-                                                                   EphyBookmark              *bookmark);
-void                 ephy_sync_service_delete_bookmark            (EphySyncService           *self,
-                                                                   EphyBookmark              *bookmark,
-                                                                   gboolean                   conditional);
-void                 ephy_sync_service_sync_bookmarks             (EphySyncService           *self,
-                                                                   gboolean                   first);
-void                 ephy_sync_service_start_periodical_sync      (EphySyncService           *self,
-                                                                   gboolean                   now);
+void                 ephy_sync_service_start_periodical_sync      (EphySyncService           *self);
 void                 ephy_sync_service_stop_periodical_sync       (EphySyncService           *self);
 
 G_END_DECLS

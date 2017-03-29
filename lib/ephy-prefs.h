@@ -151,7 +151,6 @@ static const char * const ephy_prefs_web_schema[] = {
 
 #define EPHY_PREFS_SYNC_SCHEMA              "org.gnome.Epiphany.sync"
 #define EPHY_PREFS_SYNC_USER                "sync-user"
-#define EPHY_PREFS_SYNC_TIME                "sync-time"
 #define EPHY_PREFS_SYNC_BOOKMARKS_SYNC_TIME "bookmarks-sync-time"
 
 static struct {

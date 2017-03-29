@@ -34,8 +34,6 @@ char               *ephy_sync_utils_build_json_string     (gboolean           es
                                                            const char        *key,
                                                            const char        *value,
                                                            ...) G_GNUC_NULL_TERMINATED;
-char               *ephy_sync_utils_create_bso_json       (const char        *id,
-                                                           const char        *payload);
 char               *ephy_sync_utils_make_audience         (const char        *url);
 const char         *ephy_sync_utils_token_name_from_type  (EphySyncTokenType  type);
 EphySyncTokenType   ephy_sync_utils_token_type_from_name  (const char        *name);
