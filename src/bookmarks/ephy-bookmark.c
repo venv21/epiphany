@@ -419,19 +419,15 @@ ephy_bookmark_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable
 }
 
 static char *
-ephy_bookmark_synchronizable_to_bso (EphySynchronizable *synchronizable)
+ephy_bookmark_synchronizable_to_bso (EphySynchronizable  *synchronizable,
+                                     SyncCryptoKeyBundle *bundle)
 {
   EphyBookmark *bookmark = EPHY_BOOKMARK (synchronizable);
-  EphySyncService *service;
-  SyncCryptoKeyBundle *bundle;
   char *bso = NULL;
   char *serialized;
   char *payload;
 
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-  bundle = ephy_sync_service_get_key_bundle (service, "bookmarks");
   serialized = json_gobject_to_data (G_OBJECT (bookmark), NULL);
-
   payload = ephy_sync_crypto_encrypt_record (serialized, bundle);
   if (!payload) {
     g_warning ("Failed to encrypt bookmark");

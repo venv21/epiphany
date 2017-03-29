@@ -158,6 +158,8 @@ ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
 /**
  * ephy_synchronizable_to_bso:
  * @synchronizable: an #EphySynchronizable
+ * @bundle: a %SyncCryptoKeyBundle holding the encryption key and the HMAC key
+ *          used to validate and encrypt the Basic Storage Object
  *
  * Converts an #EphySynchronizable into its JSON string representation
  * of a Basic Storage Object from the client's point of view
@@ -168,14 +170,16 @@ ephy_synchronizable_set_is_uploaded (EphySynchronizable *synchronizable,
  * Return value: (transfer full): @synchronizable's BSO's JSON string representation
  **/
 char *
-ephy_synchronizable_to_bso (EphySynchronizable *synchronizable)
+ephy_synchronizable_to_bso (EphySynchronizable  *synchronizable,
+                            SyncCryptoKeyBundle *bundle)
 {
   EphySynchronizableInterface *iface;
 
   g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE (synchronizable), NULL);
+  g_return_val_if_fail (bundle, NULL);
 
   iface = EPHY_SYNCHRONIZABLE_GET_IFACE (synchronizable);
-  return iface->to_bso (synchronizable);
+  return iface->to_bso (synchronizable, bundle);
 }
 
 /**
