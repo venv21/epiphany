@@ -36,6 +36,10 @@ struct _EphySynchronizableManagerInterface {
   const char         * (*get_collection_name)     (EphySynchronizableManager  *manager);
   GType                (*get_synchronizable_type) (EphySynchronizableManager  *manager);
 
+  gboolean             (*is_initial_sync)         (EphySynchronizableManager  *manager);
+  void                 (*set_is_initial_sync)     (EphySynchronizableManager  *manager,
+                                                   gboolean                    is_initial);
+
   double               (*get_sync_time)           (EphySynchronizableManager  *manager);
   void                 (*set_sync_time)           (EphySynchronizableManager  *manager,
                                                    double                      sync_time);
@@ -54,6 +58,9 @@ struct _EphySynchronizableManagerInterface {
 
 const char         *ephy_synchronizable_manager_get_collection_name     (EphySynchronizableManager  *manager);
 GType               ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager  *manager);
+gboolean            ephy_synchronizable_manager_is_initial_sync         (EphySynchronizableManager  *manager);
+void                ephy_synchronizable_manager_set_is_initial_sync     (EphySynchronizableManager  *manager,
+                                                                         gboolean                    is_initial);
 double              ephy_synchronizable_manager_get_sync_time           (EphySynchronizableManager  *manager);
 void                ephy_synchronizable_manager_set_sync_time           (EphySynchronizableManager  *manager,
                                                                          double                      sync_time);

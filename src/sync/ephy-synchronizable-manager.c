@@ -28,6 +28,8 @@ ephy_synchronizable_manager_default_init (EphySynchronizableManagerInterface *if
 {
   iface->get_collection_name = ephy_synchronizable_manager_get_collection_name;
   iface->get_synchronizable_type = ephy_synchronizable_manager_get_synchronizable_type;
+  iface->is_initial_sync = ephy_synchronizable_manager_is_initial_sync;
+  iface->set_is_initial_sync = ephy_synchronizable_manager_set_is_initial_sync;
   iface->get_sync_time = ephy_synchronizable_manager_get_sync_time;
   iface->set_sync_time = ephy_synchronizable_manager_set_sync_time;
   iface->add = ephy_synchronizable_manager_add;
@@ -55,6 +57,29 @@ ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager *
 
   iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
   return iface->get_synchronizable_type (manager);
+}
+
+gboolean
+ephy_synchronizable_manager_is_initial_sync (EphySynchronizableManager *manager)
+{
+  EphySynchronizableManagerInterface *iface;
+
+  g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager), FALSE);
+
+  iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
+  return iface->is_initial_sync (manager);
+}
+
+void
+ephy_synchronizable_manager_set_is_initial_sync (EphySynchronizableManager *manager,
+                                                 gboolean                   is_initial)
+{
+  EphySynchronizableManagerInterface *iface;
+
+  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+
+  iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
+  iface->set_is_initial_sync (manager, is_initial);
 }
 
 double

@@ -233,6 +233,9 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     g_settings_set_string (EPHY_SETTINGS_SYNC,
                            EPHY_PREFS_SYNC_USER,
                            ephy_sync_service_get_user_email (service));
+    g_settings_set_boolean (EPHY_SETTINGS_SYNC,
+                            EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC,
+                            TRUE);
 
     /* Start syncing. */
     ephy_sync_service_start_periodical_sync (service);

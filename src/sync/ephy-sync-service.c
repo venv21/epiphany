@@ -102,7 +102,7 @@ typedef struct {
 
 typedef struct {
   EphySynchronizableManager *manager;
-  gboolean                   first_time;
+  gboolean                   is_initial;
 } SyncCollectionAsyncData;
 
 typedef struct {
@@ -193,13 +193,13 @@ sign_in_async_data_free (SignInAsyncData *data)
 
 static SyncCollectionAsyncData *
 sync_collection_async_data_new (EphySynchronizableManager *manager,
-                                gboolean                   first_time)
+                                gboolean                   is_initial)
 {
   SyncCollectionAsyncData *data;
 
   data = g_slice_new (SyncCollectionAsyncData);
   data->manager = g_object_ref (manager);
-  data->first_time = first_time;
+  data->is_initial = is_initial;
 
   return data;
 }
@@ -1480,7 +1480,7 @@ sync_collection_cb (SoupSession *session,
   }
 
 merge_remotes:
-  ephy_synchronizable_manager_merge_remotes (data->manager, data->first_time,
+  ephy_synchronizable_manager_merge_remotes (data->manager, data->is_initial,
                                              remotes, &to_upload, &to_test);
 
   if (to_upload) {
@@ -1499,6 +1499,7 @@ merge_remotes:
     }
   }
 
+  ephy_synchronizable_manager_set_is_initial_sync (data->manager, FALSE);
   /* Update sync time. */
   timestamp = soup_message_headers_get_one (msg->response_headers, "X-Weave-Timestamp");
   ephy_synchronizable_manager_set_sync_time (data->manager, g_ascii_strtod (timestamp, NULL));
@@ -1516,24 +1517,24 @@ out:
 
 static void
 ephy_sync_service_sync_collection (EphySyncService           *self,
-                                   EphySynchronizableManager *manager,
-                                   gboolean                   first_time)
+                                   EphySynchronizableManager *manager)
 {
   SyncCollectionAsyncData *data;
   const char *collection;
   char *endpoint;
+  gboolean is_initial;
 
   g_assert (EPHY_IS_SYNC_SERVICE (self));
   g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
 
-  data = sync_collection_async_data_new (manager, first_time);
   collection = ephy_synchronizable_manager_get_collection_name (manager);
-  LOG ("Syncing %s collection...", collection);
-
   endpoint = g_strdup_printf ("storage/%s?full=true", collection);
-  ephy_sync_service_queue_storage_request (self, endpoint,
-                                           SOUP_METHOD_GET, NULL,
-                                           first_time ? -1 : ephy_synchronizable_manager_get_sync_time (manager),
+  is_initial = ephy_synchronizable_manager_is_initial_sync (manager);
+  data = sync_collection_async_data_new (manager, is_initial);
+
+  LOG ("Syncing %s collection...", collection);
+  ephy_sync_service_queue_storage_request (self, endpoint, SOUP_METHOD_GET, NULL,
+                                           is_initial ? -1 : ephy_synchronizable_manager_get_sync_time (manager),
                                            -1, sync_collection_cb, data);
 
   g_free (endpoint);

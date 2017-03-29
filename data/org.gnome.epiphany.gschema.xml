@@ -277,6 +277,11 @@
 			<summary>Bookmarks sync timestamp</summary>
 			<description>The timestamp at which last bookmarks sync was made.</description>
 		</key>
+		<key type="b" name="bookmarks-initial-sync">
+			<default>true</default>
+			<summary>Initial sync or normal sync</summary>
+			<description>TRUE if bookmarks collection needs to be synced for the first time, FALSE otherwise.</description>
+		</key>
 	</schema>
 	<enum id="org.gnome.Epiphany.Permission">
 		<value nick="undecided" value="-1"/>

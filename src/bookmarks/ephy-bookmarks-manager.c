@@ -254,6 +254,21 @@ synchronizable_manager_get_synchronizable_type (EphySynchronizableManager *manag
   return EPHY_TYPE_BOOKMARK;
 }
 
+static gboolean
+synchronizable_manager_is_initial_sync (EphySynchronizableManager *manager)
+{
+  return g_settings_get_boolean (EPHY_SETTINGS_SYNC,
+                                 EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC);
+}
+
+static void
+synchronizable_manager_set_is_initial_sync (EphySynchronizableManager *manager,
+                                            gboolean                   is_initial)
+{
+  g_settings_set_boolean (EPHY_SETTINGS_SYNC,
+                          EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC, is_initial);
+}
+
 static double
 synchronizable_manager_get_sync_time (EphySynchronizableManager *manager)
 {
@@ -290,7 +305,7 @@ synchronizable_manager_remove (EphySynchronizableManager *manager,
 
 static void
 synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
-                                      gboolean                    first_time,
+                                      gboolean                    is_initial,
                                       GList                      *remotes,
                                       GList                     **to_upload,
                                       GList                     **to_test)
@@ -355,7 +370,7 @@ handle_local_bookmarks:
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter)) {
     local = EPHY_BOOKMARK (g_sequence_get (iter));
     if (!g_hash_table_contains (handled, local)) {
-      if (first_time) {
+      if (is_initial) {
         /* In case of a first time sync, upload all remaining locals to server. */
         *to_upload = g_list_prepend (*to_upload, local);
       } else {
@@ -382,6 +397,8 @@ ephy_synchronizable_manager_iface_init (EphySynchronizableManagerInterface *ifac
 {
   iface->get_collection_name = synchronizable_manager_get_collection_name;
   iface->get_synchronizable_type = synchronizable_manager_get_synchronizable_type;
+  iface->is_initial_sync = synchronizable_manager_is_initial_sync;
+  iface->set_is_initial_sync = synchronizable_manager_set_is_initial_sync;
   iface->get_sync_time = synchronizable_manager_get_sync_time;
   iface->set_sync_time = synchronizable_manager_set_sync_time;
   iface->add = synchronizable_manager_add;
