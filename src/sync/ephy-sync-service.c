@@ -103,6 +103,16 @@ typedef struct {
   guint8 *respXORkey;
 } SignInAsyncData;
 
+typedef struct {
+  EphySynchronizableManager *manager;
+  gboolean                   first_time;
+} SyncCollectionAsyncData;
+
+typedef struct {
+  EphySynchronizableManager *manager;
+  EphySynchronizable        *synchronizable;
+} SyncAsyncData;
+
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
 
 static StorageRequestAsyncData *
@@ -182,6 +192,51 @@ sign_in_async_data_free (SignInAsyncData *data)
   g_free (data->respXORkey);
 
   g_slice_free (SignInAsyncData, data);
+}
+
+static SyncCollectionAsyncData *
+sync_collection_async_data_new (EphySynchronizableManager *manager,
+                                gboolean                   first_time)
+{
+  SyncCollectionAsyncData *data;
+
+  data = g_slice_new (SyncCollectionAsyncData);
+  data->manager = g_object_ref (manager);
+  data->first_time = first_time;
+
+  return data;
+}
+
+static void
+sync_collection_async_data_free (SyncCollectionAsyncData *data)
+{
+  g_assert (data);
+
+  g_object_unref (data->manager);
+  g_slice_free (SyncCollectionAsyncData, data);
+}
+
+static SyncAsyncData *
+sync_async_data_new (EphySynchronizableManager *manager,
+                     EphySynchronizable        *synchronizable)
+{
+  SyncAsyncData *data;
+
+  data = g_slice_new (SyncAsyncData);
+  data->manager = g_object_ref (manager);
+  data->synchronizable = g_object_ref (synchronizable);
+
+  return data;
+}
+
+static void
+sync_async_data_free (SyncAsyncData *data)
+{
+  g_assert (data);
+
+  g_object_unref (data->manager);
+  g_object_unref (data->synchronizable);
+  g_slice_free (SyncAsyncData, data);
 }
 
 static gboolean
@@ -941,91 +996,6 @@ ephy_sync_service_report_sign_in_error (EphySyncService *self,
 }
 
 static void
-obtain_sync_key_bundles_cb (SoupSession *session,
-                            SoupMessage *msg,
-                            gpointer     user_data)
-{
-  EphySyncService *service;
-  SyncCryptoKeyBundle *bundle;
-  JsonParser *parser;
-  JsonObject *json;
-  JsonObject *collections;
-  JsonNode *node;
-  JsonArray *array;
-  JsonObjectIter iter;
-  const char *member;
-  const char *payload;
-  char *record;
-  guint8 *kB;
-
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-
-  if (msg->status_code != 200) {
-    g_warning ("Failed to get crypto/keys record. Status code: %u, response: %s",
-               msg->status_code, msg->response_body->data);
-    goto out;
-  }
-
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-  payload = json_object_get_string_member (json, "payload");
-
-  /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
-   * the first one used as a symmetric encryption key (AES) and the second one
-   * used as a HMAC key. */
-  kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
-  bundle = ephy_sync_crypto_derive_key_bundle (kB, EPHY_SYNC_TOKEN_LENGTH);
-
-  record = ephy_sync_crypto_decrypt_record (payload, bundle);
-  if (record) {
-    json_parser_load_from_data (parser, record, -1, NULL);
-    json = json_node_get_object (json_parser_get_root (parser));
-
-    /* Get the default key bundle. This is always present. */
-    array = json_object_get_array_member (json, "default");
-    g_hash_table_insert (service->key_bundles,
-                         (char *)"default",
-                         ephy_sync_crypto_key_bundle_from_array (array));
-
-    /* Get the per-collection key bundles, if any. */
-    collections = json_object_get_object_member (json, "collections");
-    json_object_iter_init (&iter, collections);
-    while (json_object_iter_next (&iter, &member, &node)) {
-      if (JSON_NODE_HOLDS_ARRAY (node)) {
-        array = json_node_get_array (node);
-        g_hash_table_insert (service->key_bundles,
-                             (char *)member,
-                             ephy_sync_crypto_key_bundle_from_array (array));
-      }
-    }
-
-    g_free (record);
-  } else {
-    /* TODO: Notify the user that the sync failed due to missing sync keys. */
-    g_warning ("Failed to retrieve the sync key bundles");
-  }
-
-  g_free (kB);
-  g_object_unref (parser);
-  ephy_sync_crypto_key_bundle_free (bundle);
-
-out:
-  ephy_sync_service_send_next_storage_request (service);
-}
-
-static void
-ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self)
-{
-  g_assert (EPHY_IS_SYNC_SERVICE (self));
-
-  g_hash_table_remove_all (self->key_bundles);
-  ephy_sync_service_queue_storage_request (self, "storage/crypto/keys",
-                                           SOUP_METHOD_GET, NULL, -1, -1,
-                                           obtain_sync_key_bundles_cb, NULL);
-}
-
-static void
 check_storage_version_cb (SoupSession *session,
                           SoupMessage *msg,
                           gpointer     user_data)
@@ -1650,6 +1620,513 @@ ephy_sync_service_sync_bookmarks (EphySyncService *self,
   }
 
   g_free (endpoint);
+}
+
+static void
+test_and_remove_synchronizable_cb (SoupSession *session,
+                                   SoupMessage *msg,
+                                   gpointer     user_data)
+{
+  EphySyncService *service;
+  SyncAsyncData *data;
+
+  data = (SyncAsyncData *)user_data;
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+
+  if (msg->status_code == 404) {
+    LOG ("Removed local object with id %s", ephy_synchronizable_get_id (data->synchronizable));
+    ephy_synchronizable_manager_remove (data->manager, data->synchronizable);
+  } else if (msg->status_code != 200) {
+    g_warning ("Failed to get object from server. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+  }
+
+  sync_async_data_free (data);
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_test_and_remove_synchronizable (EphySyncService           *self,
+                                                  EphySynchronizableManager *manager,
+                                                  EphySynchronizable        *synchronizable)
+{
+  SyncAsyncData *data;
+  char *endpoint;
+  const char *collection;
+  const char *id;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+  g_assert (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  id = ephy_synchronizable_get_id (synchronizable);
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  endpoint = g_strdup_printf ("storage/%s/%s", collection, id);
+  data = sync_async_data_new (manager, synchronizable);
+
+  LOG ("Testing local object with id %s...", id);
+  ephy_sync_service_queue_storage_request (self, endpoint,
+                                           SOUP_METHOD_GET, NULL, -1, -1,
+                                           test_and_remove_synchronizable_cb, data);
+
+  g_free (endpoint);
+}
+
+static void
+delete_synchronizable_cb (SoupSession *session,
+                          SoupMessage *msg,
+                          gpointer     user_data)
+{
+  EphySyncService *service;
+
+  if (msg->status_code == 200) {
+    LOG ("Successfully deleted from server");
+  } else {
+    g_warning ("Failed to delete object. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+  }
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+void
+ephy_sync_service_delete_synchronizable (EphySyncService           *self,
+                                         EphySynchronizableManager *manager,
+                                         EphySynchronizable        *synchronizable)
+{
+  char *endpoint;
+  const char *collection;
+  const char *id;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+  g_assert (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  id = ephy_synchronizable_get_id (synchronizable);
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  endpoint = g_strdup_printf ("storage/%s/%s", collection, id);
+
+  LOG ("Deleting object with id %s...", id);
+  ephy_sync_service_queue_storage_request (self, endpoint,
+                                           SOUP_METHOD_DELETE, NULL, -1, -1,
+                                           delete_synchronizable_cb, NULL);
+
+  g_free (endpoint);
+}
+
+static void
+download_synchronizable_cb (SoupSession *session,
+                            SoupMessage *msg,
+                            gpointer     user_data)
+{
+  EphySyncService *service;
+  EphySynchronizable *synchronizable;
+  SyncCryptoKeyBundle *bundle;
+  SyncAsyncData *data;
+  JsonParser *parser;
+  JsonObject *bso;
+  GError *error = NULL;
+  GType type;
+  const char *collection;
+
+  data = (SyncAsyncData *)user_data;
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+
+  if (msg->status_code != 200) {
+    g_warning ("Failed to download object. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    goto out;
+  }
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON");
+    g_error_free (error);
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON root does not hold a JSON object");
+    goto free_parser;
+  }
+
+  bso = json_node_get_object (json_parser_get_root (parser));
+  type = ephy_synchronizable_manager_get_synchronizable_type (data->manager);
+  collection = ephy_synchronizable_manager_get_collection_name (data->manager);
+  bundle = ephy_sync_service_get_key_bundle (service, collection);
+  synchronizable = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (bso, type, bundle));
+  if (!synchronizable) {
+    g_warning ("Failed to create synchronizable object from BSO");
+    goto free_parser;
+  }
+
+  /* Overwrite the local object. */
+  ephy_synchronizable_manager_remove (data->manager, data->synchronizable);
+  ephy_synchronizable_manager_add (data->manager, synchronizable);
+  LOG ("Successfully downloaded object");
+
+  g_object_unref (synchronizable);
+free_parser:
+  g_object_unref (parser);
+out:
+  sync_async_data_free (data);
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_download_synchronizable (EphySyncService           *self,
+                                           EphySynchronizableManager *manager,
+                                           EphySynchronizable        *synchronizable)
+{
+  SyncAsyncData *data;
+  char *endpoint;
+  const char *collection;
+  const char *id;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+  g_assert (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  id = ephy_synchronizable_get_id (synchronizable);
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  endpoint = g_strdup_printf ("storage/%s/%s", collection, id);
+  data = sync_async_data_new (manager, synchronizable);
+
+  LOG ("Downloading object with id %s...", id);
+  ephy_sync_service_queue_storage_request (self, endpoint,
+                                           SOUP_METHOD_GET, NULL, -1, -1,
+                                           download_synchronizable_cb, data);
+
+  g_free (endpoint);
+}
+
+static void
+upload_synchronizable_cb (SoupSession *session,
+                          SoupMessage *msg,
+                          gpointer     user_data)
+{
+  EphySyncService *service;
+  SyncAsyncData *data;
+  double modified;
+
+  data = (SyncAsyncData *)user_data;
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+
+  /* Code 412 means that there is a more recent version of the object
+   * on the server. Download it. */
+  if (msg->status_code == 412) {
+    LOG ("Found a newer version of the object on the server, downloading it...");
+    ephy_sync_service_download_synchronizable (service, data->manager, data->synchronizable);
+  } else if (msg->status_code == 200) {
+    LOG ("Successfully uploaded to server");
+    modified = g_ascii_strtod (msg->response_body->data, NULL);
+    /* FIXME: Make sure the synchronizable manager commits this change to file/database. */
+    ephy_synchronizable_set_modification_time (data->synchronizable, modified);
+  } else {
+    g_warning ("Failed to upload object. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+  }
+
+  sync_async_data_free (data);
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_upload_synchronizable (EphySyncService           *self,
+                                         EphySynchronizableManager *manager,
+                                         EphySynchronizable        *synchronizable)
+{
+  SyncAsyncData *data;
+  char *bso;
+  char *endpoint;
+  const char *collection;
+  const char *id;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+  g_assert (EPHY_IS_SYNCHRONIZABLE (synchronizable));
+
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  bso = ephy_synchronizable_to_bso (synchronizable,
+                                    ephy_sync_service_get_key_bundle (self, collection));
+  if (!bso) {
+    g_warning ("Failed to convert synchronizable to BSO");
+    return;
+  }
+
+  id = ephy_synchronizable_get_id (synchronizable);
+  endpoint = g_strdup_printf ("storage/%s/%s", collection, id);
+  data = sync_async_data_new (manager, synchronizable);
+
+  LOG ("Uploading object with id %s...", id);
+  ephy_sync_service_queue_storage_request (self, endpoint, SOUP_METHOD_PUT, bso, -1,
+                                           ephy_synchronizable_get_modification_time (synchronizable),
+                                           upload_synchronizable_cb, data);
+
+  g_free (endpoint);
+  g_free (bso);
+}
+
+static void
+sync_collection_cb (SoupSession *session,
+                    SoupMessage *msg,
+                    gpointer     user_data)
+{
+  EphySyncService *service;
+  SyncCollectionAsyncData *data;
+  EphySynchronizable *remote;
+  SyncCryptoKeyBundle *bundle;
+  JsonParser *parser = NULL;
+  JsonArray *array;
+  JsonNode *node;
+  JsonObject *object;
+  GError *error = NULL;
+  GList *remotes = NULL;
+  GList *to_upload = NULL;
+  GList *to_test = NULL;
+  GType type;
+  const char *collection;
+  const char *timestamp;
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  data = (SyncCollectionAsyncData *)user_data;
+  collection = ephy_synchronizable_manager_get_collection_name (data->manager);
+
+  /* Code 304 means that the collection has not been modified. */
+  if (msg->status_code == 304) {
+    LOG ("There are no new remote objects");
+    goto merge_remotes;
+  }
+
+  if (msg->status_code != 200) {
+    g_warning ("Failed to get records in collection %s. Status code: %u, response: %s",
+               collection, msg->status_code, msg->response_body->data);
+    goto out;
+  }
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_ARRAY (json_parser_get_root (parser))) {
+    g_warning ("JSON root does not hold an array");
+    goto free_parser;
+  }
+
+  type = ephy_synchronizable_manager_get_synchronizable_type (data->manager);
+  bundle = ephy_sync_service_get_key_bundle (service, collection);
+  array = json_node_get_array (json_parser_get_root (parser));
+
+  for (guint i = 0; i < json_array_get_length (array); i++) {
+    node = json_array_get_element (array, i);
+    if (!JSON_NODE_HOLDS_OBJECT (node)) {
+      g_warning ("Array member does not hold a JSON object, skipping...");
+      continue;
+    }
+    object = json_node_get_object (node);
+    remote = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (object, type, bundle));
+    if (!remote) {
+      g_warning ("Failed to create synchronizable object from BSO, skipping...");
+      continue;
+    }
+    remotes = g_list_prepend (remotes, remote);
+  }
+
+merge_remotes:
+  ephy_synchronizable_manager_merge_remotes (data->manager, data->first_time,
+                                             remotes, &to_upload, &to_test);
+
+  if (to_upload) {
+    LOG ("Uploading local objects to server...");
+    for (GList *l = to_upload; l && l->data; l = l->next) {
+      ephy_sync_service_upload_synchronizable (service, data->manager,
+                                               EPHY_SYNCHRONIZABLE (l->data));
+    }
+  }
+
+  if (to_test) {
+    LOG ("Testing if any local object needs to be removed...");
+    for (GList *l = to_test; l && l->data; l = l->next) {
+      ephy_sync_service_test_and_remove_synchronizable (service, data->manager,
+                                                        EPHY_SYNCHRONIZABLE (l->data));
+    }
+  }
+
+  /* Update sync time. */
+  timestamp = soup_message_headers_get_one (msg->response_headers, "X-Weave-Timestamp");
+  ephy_synchronizable_manager_set_sync_time (data->manager, g_ascii_strtod (timestamp, NULL));
+
+  g_list_free (to_upload);
+  g_list_free (to_test);
+  g_list_free (remotes);
+free_parser:
+  if (parser)
+    g_object_unref (parser);
+out:
+  sync_collection_async_data_free (data);
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_sync_collection (EphySyncService           *self,
+                                   EphySynchronizableManager *manager,
+                                   gboolean                   first_time)
+{
+  SyncCollectionAsyncData *data;
+  const char *collection;
+  char *endpoint;
+
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
+
+  data = sync_collection_async_data_new (manager, first_time);
+  collection = ephy_synchronizable_manager_get_collection_name (manager);
+  LOG ("Syncing %s collection...", collection);
+
+  endpoint = g_strdup_printf ("storage/%s?full=true", collection);
+  ephy_sync_service_queue_storage_request (self, endpoint,
+                                           SOUP_METHOD_GET, NULL,
+                                           first_time ? -1 : ephy_synchronizable_manager_get_sync_time (manager),
+                                           -1, sync_collection_cb, data);
+
+  g_free (endpoint);
+}
+
+static void
+obtain_sync_key_bundles_cb (SoupSession *session,
+                            SoupMessage *msg,
+                            gpointer     user_data)
+{
+  EphySyncService *service;
+  SyncCryptoKeyBundle *bundle;
+  JsonParser *parser;
+  JsonObject *json;
+  JsonObject *collections;
+  JsonNode *node;
+  JsonArray *array;
+  JsonObjectIter iter;
+  GError *error = NULL;
+  const char *member;
+  const char *payload;
+  char *record;
+  guint8 *kB;
+
+  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
+
+  if (msg->status_code != 200) {
+    /* TODO: Generate and upload new sync key bundles. */
+    g_warning ("Failed to get crypto/keys record. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    goto out;
+  }
+
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON root does not hold an array");
+    goto free_parser;
+  }
+  json = json_node_get_object (json_parser_get_root (parser));
+  if (!json_object_has_member (json, "payload")) {
+    g_warning ("JSON object is missing 'payload' member");
+    goto free_parser;
+  }
+  payload = json_object_get_string_member (json, "payload");
+
+  /* Derive the Sync Key bundle from kB. The bundle consists of two 32 bytes keys:
+   * the first one used as a symmetric encryption key (AES) and the second one
+   * used as a HMAC key. */
+  kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (service, TOKEN_KB));
+  bundle = ephy_sync_crypto_derive_key_bundle (kB, EPHY_SYNC_TOKEN_LENGTH);
+
+  record = ephy_sync_crypto_decrypt_record (payload, bundle);
+  if (!record) {
+    /* TODO: Notify user to sign in again. */
+    g_warning ("Failed to decrypt crypto keys record");
+    goto free_bundle;
+  }
+
+  json_parser_load_from_data (parser, record, -1, &error);
+  if (error) {
+    g_warning ("Failed to parse JSON from record: %s", error->message);
+    g_error_free (error);
+    goto free_record;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON root does not hold a JSON object");
+    goto free_record;
+  }
+  json = json_node_get_object (json_parser_get_root (parser));
+
+  /* Get the default key bundle. This must be always present. */
+  if (!json_object_has_member (json, "default")) {
+    g_warning ("Record is missing default keys");
+    goto free_record;
+  }
+  if (!JSON_NODE_HOLDS_ARRAY (json_object_get_member (json, "default"))) {
+    g_warning ("Default keys are not a JSON array");
+    goto free_record;
+  }
+  array = json_object_get_array_member (json, "default");
+  if (json_array_get_length (array) != 2) {
+    g_warning ("Expected 2 default keys, found %u", json_array_get_length (array));
+    goto free_record;
+  }
+
+  g_hash_table_insert (service->key_bundles,
+                       (char *)"default",
+                       ephy_sync_crypto_key_bundle_from_array (array));
+
+  /* Get the per-collection key bundles, if any. */
+  if (json_object_has_member (json, "collections")) {
+    if (JSON_NODE_HOLDS_OBJECT (json_object_get_member (json, "collections"))) {
+      collections = json_object_get_object_member (json, "collections");
+      json_object_iter_init (&iter, collections);
+      while (json_object_iter_next (&iter, &member, &node)) {
+        if (!JSON_NODE_HOLDS_ARRAY (node))
+          continue;
+
+        array = json_node_get_array (node);
+        if (json_array_get_length (array) == 2) {
+          g_hash_table_insert (service->key_bundles,
+                               (char *)member,
+                               ephy_sync_crypto_key_bundle_from_array (array));
+        }
+      }
+    }
+  }
+
+  /* TODO: Successfully retrieved key bundles, do sync. */
+
+free_record:
+  g_free (record);
+free_bundle:
+  ephy_sync_crypto_key_bundle_free (bundle);
+  g_free (kB);
+free_parser:
+  g_object_unref (parser);
+out:
+  ephy_sync_service_send_next_storage_request (service);
+}
+
+static void
+ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  g_hash_table_remove_all (self->key_bundles);
+  ephy_sync_service_queue_storage_request (self, "storage/crypto/keys",
+                                           SOUP_METHOD_GET, NULL, -1, -1,
+                                           obtain_sync_key_bundles_cb, NULL);
 }
 
 static gboolean
