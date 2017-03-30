@@ -306,9 +306,9 @@ synchronizable_manager_remove (EphySynchronizableManager *manager,
 static void
 synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
                                       gboolean                    is_initial,
-                                      GList                      *remotes,
-                                      GList                     **to_upload,
-                                      GList                     **to_test)
+                                      GList                      *remotes_deleted,
+                                      GList                      *remotes_updated,
+                                      GList                     **to_upload)
 {
   EphyBookmarksManager *self;
   EphyBookmark *remote;
@@ -318,15 +318,37 @@ synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
   GHashTable *handled;
   char *type;
   char *parent_id;
+  const char *id;
 
   self = EPHY_BOOKMARKS_MANAGER (manager);
-  handled = g_hash_table_new (g_direct_hash, g_direct_equal);
+  handled = g_hash_table_new (g_str_hash, g_str_equal);
 
-  if (!remotes)
-    goto handle_local_bookmarks;
+  /* Ignore remote deleted objects if this is an initial sync. */
+  if (is_initial)
+    goto handle_updated;
 
-  for (GList *r = remotes; r && r->data; r = r->next) {
-    remote = EPHY_BOOKMARK (r->data);
+  for (GList *l = remotes_deleted; l && l->data; l = l->next) {
+    remote = EPHY_BOOKMARK (l->data);
+    id = ephy_bookmark_get_id (remote);
+    local = ephy_bookmarks_manager_get_bookmark_by_id (self, id);
+
+    if (!local) {
+      g_object_unref (remote);
+      continue;
+    }
+
+    if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote)) {
+      *to_upload = g_list_prepend (*to_upload, local);
+      g_hash_table_add (handled, (char *)id);
+    } else {
+      ephy_bookmarks_manager_remove_bookmark (self, local);
+    }
+  }
+
+handle_updated:
+  for (GList *l = remotes_updated; l && l->data; l = l->next) {
+    remote = EPHY_BOOKMARK (l->data);
+    id = ephy_bookmark_get_id (remote);
     g_object_get (remote, "type", &type, "parentid", &parent_id, NULL);
 
     /* Ignore mobile/unfiled bookmarks and everything that is not bookmark. */
@@ -338,19 +360,20 @@ synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
     if (!ephy_bookmark_get_time_added (remote))
       ephy_bookmark_set_time_added (remote, g_get_real_time ());
 
-    local = ephy_bookmarks_manager_get_bookmark_by_id (self, ephy_bookmark_get_id (remote));
+    local = ephy_bookmarks_manager_get_bookmark_by_id (self, id);
     if (!local) {
-      /* Add remote bookmark, together with its tags (duplicate tags are automatically ignored). */
+      /* Add remote bookmark. */
       ephy_bookmarks_manager_add_bookmark (self, remote);
       ephy_bookmarks_manager_create_tags_from_bookmark (self, remote);
-      g_hash_table_add (handled, remote);
     } else {
       /* Keep the bookmark with most recent modified timestamp. */
       if (ephy_bookmark_get_modification_time (remote) > ephy_bookmark_get_modification_time (local)) {
         ephy_bookmarks_manager_remove_bookmark (self, local);
         ephy_bookmarks_manager_add_bookmark (self, remote);
         ephy_bookmarks_manager_create_tags_from_bookmark (self, remote);
-        g_hash_table_add (handled, remote);
+      } else if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote)) {
+        ephy_bookmarks_manager_create_tags_from_bookmark (self, remote);
+        *to_upload = g_list_prepend (*to_upload, local);
       } else {
         if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote))
           *to_upload = g_list_prepend (*to_upload, local);
@@ -358,29 +381,23 @@ synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
       }
     }
 
+    g_hash_table_add (handled, (char *)id);
 next:
-    g_free(type);
-    g_free(parent_id);
+    g_free (type);
+    g_free (parent_id);
     g_object_unref (remote);
   }
 
-handle_local_bookmarks:
+  /* Upload unhandled bookmarks to server. */
   bookmarks = ephy_bookmarks_manager_get_bookmarks (self);
   for (iter = g_sequence_get_begin_iter (bookmarks);
        !g_sequence_iter_is_end (iter); iter = g_sequence_iter_next (iter)) {
+
     local = EPHY_BOOKMARK (g_sequence_get (iter));
-    if (!g_hash_table_contains (handled, local)) {
-      if (is_initial) {
-        /* In case of a first time sync, upload all remaining locals to server. */
+    id = ephy_bookmark_get_id (local);
+    if (!g_hash_table_contains (handled, id)) {
+      if (is_initial || (!is_initial && !ephy_bookmark_is_uploaded (local)))
         *to_upload = g_list_prepend (*to_upload, local);
-      } else {
-        /* In case of a normal sync, upload only locals that are not uploaded
-         * and remove the rest if they don't exist on the server any longer. */
-        if (!ephy_bookmark_is_uploaded (local))
-          *to_upload = g_list_prepend (*to_upload, local);
-        else
-          *to_test = g_list_prepend (*to_test, local);
-      }
     }
   }
 

@@ -133,17 +133,16 @@ ephy_synchronizable_manager_remove (EphySynchronizableManager *manager,
 
 void
 ephy_synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
-                                           gboolean                    first_time,
-                                           GList                      *remotes,
-                                           GList                     **to_updload,
-                                           GList                     **to_test)
+                                           gboolean                    is_initial,
+                                           GList                      *remotes_deleted,
+                                           GList                      *remtoes_updated,
+                                           GList                     **to_updload)
 {
   EphySynchronizableManagerInterface *iface;
 
   g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
   g_return_if_fail (to_updload);
-  g_return_if_fail (to_test);
 
   iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
-  iface->merge_remotes (manager, first_time, remotes, to_updload, to_test);
+  iface->merge_remotes (manager, is_initial, remotes_deleted, remtoes_updated, to_updload);
 }

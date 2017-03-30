@@ -1166,56 +1166,6 @@ ephy_sync_service_do_sign_out (EphySyncService *self)
 }
 
 static void
-test_and_remove_synchronizable_cb (SoupSession *session,
-                                   SoupMessage *msg,
-                                   gpointer     user_data)
-{
-  EphySyncService *service;
-  SyncAsyncData *data;
-
-  data = (SyncAsyncData *)user_data;
-  service = ephy_shell_get_sync_service (ephy_shell_get_default ());
-
-  if (msg->status_code == 404) {
-    LOG ("Removed local object with id %s", ephy_synchronizable_get_id (data->synchronizable));
-    ephy_synchronizable_manager_remove (data->manager, data->synchronizable);
-  } else if (msg->status_code != 200) {
-    g_warning ("Failed to get object from server. Status code: %u, response: %s",
-               msg->status_code, msg->response_body->data);
-  }
-
-  sync_async_data_free (data);
-  ephy_sync_service_send_next_storage_request (service);
-}
-
-static void
-ephy_sync_service_test_and_remove_synchronizable (EphySyncService           *self,
-                                                  EphySynchronizableManager *manager,
-                                                  EphySynchronizable        *synchronizable)
-{
-  SyncAsyncData *data;
-  char *endpoint;
-  const char *collection;
-  const char *id;
-
-  g_assert (EPHY_IS_SYNC_SERVICE (self));
-  g_assert (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
-  g_assert (EPHY_IS_SYNCHRONIZABLE (synchronizable));
-
-  id = ephy_synchronizable_get_id (synchronizable);
-  collection = ephy_synchronizable_manager_get_collection_name (manager);
-  endpoint = g_strdup_printf ("storage/%s/%s", collection, id);
-  data = sync_async_data_new (manager, synchronizable);
-
-  LOG ("Testing local object with id %s...", id);
-  ephy_sync_service_queue_storage_request (self, endpoint,
-                                           SOUP_METHOD_GET, NULL, -1, -1,
-                                           test_and_remove_synchronizable_cb, data);
-
-  g_free (endpoint);
-}
-
-static void
 delete_synchronizable_cb (SoupSession *session,
                           SoupMessage *msg,
                           gpointer     user_data)
@@ -1272,6 +1222,7 @@ download_synchronizable_cb (SoupSession *session,
   GError *error = NULL;
   GType type;
   const char *collection;
+  gboolean is_deleted;
 
   data = (SyncAsyncData *)user_data;
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
@@ -1298,16 +1249,20 @@ download_synchronizable_cb (SoupSession *session,
   type = ephy_synchronizable_manager_get_synchronizable_type (data->manager);
   collection = ephy_synchronizable_manager_get_collection_name (data->manager);
   bundle = ephy_sync_service_get_key_bundle (service, collection);
-  synchronizable = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (bso, type, bundle));
+  synchronizable = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (bso, type, bundle, &is_deleted));
   if (!synchronizable) {
     g_warning ("Failed to create synchronizable object from BSO");
     goto free_parser;
   }
 
-  /* Overwrite the local object. */
+  /* Delete the local object and add the remote one if it is not marked as deleted. */
   ephy_synchronizable_manager_remove (data->manager, data->synchronizable);
-  ephy_synchronizable_manager_add (data->manager, synchronizable);
-  LOG ("Successfully downloaded object");
+  if (!is_deleted) {
+    ephy_synchronizable_manager_add (data->manager, synchronizable);
+    LOG ("Successfully downloaded from server");
+  } else {
+    g_object_unref (synchronizable);
+  }
 
   g_object_unref (synchronizable);
 free_parser:
@@ -1425,12 +1380,13 @@ sync_collection_cb (SoupSession *session,
   JsonNode *node;
   JsonObject *object;
   GError *error = NULL;
-  GList *remotes = NULL;
+  GList *remotes_updated = NULL;
+  GList *remotes_deleted = NULL;
   GList *to_upload = NULL;
-  GList *to_test = NULL;
   GType type;
   const char *collection;
   const char *timestamp;
+  gboolean is_deleted;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
   data = (SyncCollectionAsyncData *)user_data;
@@ -1471,17 +1427,20 @@ sync_collection_cb (SoupSession *session,
       continue;
     }
     object = json_node_get_object (node);
-    remote = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (object, type, bundle));
+    remote = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (object, type, bundle, &is_deleted));
     if (!remote) {
       g_warning ("Failed to create synchronizable object from BSO, skipping...");
       continue;
     }
-    remotes = g_list_prepend (remotes, remote);
+    if (is_deleted)
+      remotes_deleted = g_list_prepend (remotes_deleted, remote);
+    else
+      remotes_updated = g_list_prepend (remotes_updated, remote);
   }
 
 merge_remotes:
   ephy_synchronizable_manager_merge_remotes (data->manager, data->is_initial,
-                                             remotes, &to_upload, &to_test);
+                                             remotes_deleted, remotes_updated, &to_upload);
 
   if (to_upload) {
     LOG ("Uploading local objects to server...");
@@ -1491,22 +1450,14 @@ merge_remotes:
     }
   }
 
-  if (to_test) {
-    LOG ("Testing if any local object needs to be removed...");
-    for (GList *l = to_test; l && l->data; l = l->next) {
-      ephy_sync_service_test_and_remove_synchronizable (service, data->manager,
-                                                        EPHY_SYNCHRONIZABLE (l->data));
-    }
-  }
-
   ephy_synchronizable_manager_set_is_initial_sync (data->manager, FALSE);
   /* Update sync time. */
   timestamp = soup_message_headers_get_one (msg->response_headers, "X-Weave-Timestamp");
   ephy_synchronizable_manager_set_sync_time (data->manager, g_ascii_strtod (timestamp, NULL));
 
   g_list_free (to_upload);
-  g_list_free (to_test);
-  g_list_free (remotes);
+  g_list_free (remotes_updated);
+  g_list_free (remotes_deleted);
 free_parser:
   if (parser)
     g_object_unref (parser);

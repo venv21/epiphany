@@ -69,6 +69,7 @@ char                *ephy_synchronizable_to_bso                 (EphySynchroniza
  * Think of it as more of an utility function. */
 GObject             *ephy_synchronizable_from_bso               (JsonObject          *bso,
                                                                  GType                gtype,
-                                                                 SyncCryptoKeyBundle *bundle);
+                                                                 SyncCryptoKeyBundle *bundle,
+                                                                 gboolean            *is_deleted);
 
 G_END_DECLS

@@ -50,10 +50,10 @@ struct _EphySynchronizableManagerInterface {
                                                    EphySynchronizable         *synchronizable);
 
   void                 (*merge_remotes)           (EphySynchronizableManager  *manager,
-                                                   gboolean                    first_time,
-                                                   GList                      *remotes,
-                                                   GList                     **to_upload,
-                                                   GList                     **to_test);
+                                                   gboolean                    is_initial,
+                                                   GList                      *remotes_deleted,
+                                                   GList                      *remotes_updated,
+                                                   GList                     **to_upload);
 };
 
 const char         *ephy_synchronizable_manager_get_collection_name     (EphySynchronizableManager  *manager);
@@ -69,9 +69,9 @@ void                ephy_synchronizable_manager_add                     (EphySyn
 void                ephy_synchronizable_manager_remove                  (EphySynchronizableManager  *manager,
                                                                          EphySynchronizable         *synchronizable);
 void                ephy_synchronizable_manager_merge_remotes           (EphySynchronizableManager  *manager,
-                                                                         gboolean                    first_time,
-                                                                         GList                      *remotes,
-                                                                         GList                     **to_upload,
-                                                                         GList                     **to_test);
+                                                                         gboolean                    is_initial,
+                                                                         GList                      *remotes_deleted,
+                                                                         GList                      *remotes_updated,
+                                                                         GList                     **to_upload);
 
 G_END_DECLS

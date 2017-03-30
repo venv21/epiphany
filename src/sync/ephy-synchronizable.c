@@ -188,6 +188,7 @@ ephy_synchronizable_to_bso (EphySynchronizable  *synchronizable,
  * @gtype: the #GType of object to construct
  * @bundle: a %SyncCryptoKeyBundle holding the encryption key and the HMAC key
  *          used to validate and decrypt the Basic Storage Object
+ * @is_deleted: return value for a flag that shows whether the object is marked as deleted
  *
  * Converts a JSON object representing the Basic Storage Object
  * from the server's point of view (i.e. the %modified field is present)
@@ -204,16 +205,20 @@ ephy_synchronizable_to_bso (EphySynchronizable  *synchronizable,
 GObject *
 ephy_synchronizable_from_bso (JsonObject          *bso,
                               GType                gtype,
-                              SyncCryptoKeyBundle *bundle)
+                              SyncCryptoKeyBundle *bundle,
+                              gboolean            *is_deleted)
 {
   GObject *object = NULL;
   GError *error = NULL;
+  JsonParser *parser;
+  JsonObject *json;
   char *serialized;
   const char *payload;
   double modified;
 
   g_return_val_if_fail (bso, NULL);
   g_return_val_if_fail (bundle, NULL);
+  g_return_val_if_fail (is_deleted, NULL);
 
   if (!json_object_has_member (bso, "id") ||
       !json_object_has_member (bso, "payload") ||
@@ -230,17 +235,37 @@ ephy_synchronizable_from_bso (JsonObject          *bso,
     goto out;
   }
 
+  parser = json_parser_new ();
+  json_parser_load_from_data (parser, serialized, -1, &error);
+  if (error) {
+    g_warning ("Decrypted text is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON root does not hold a JSON object");
+    goto free_parser;
+  }
+  json = json_node_get_object (json_parser_get_root (parser));
+  if (json_object_has_member (json, "deleted")) {
+    if (JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "deleted")))
+      *is_deleted = json_object_get_boolean_member (json, "deleted");
+  } else {
+    *is_deleted = FALSE;
+  }
+
   object = json_gobject_from_data (gtype, serialized, -1, &error);
   if (error) {
     g_warning ("Failed to create GObject from BSO: %s", error->message);
     g_error_free (error);
-    goto free_serialized;
+    goto free_parser;
   }
 
   ephy_synchronizable_set_modification_time (EPHY_SYNCHRONIZABLE (object), modified);
   ephy_synchronizable_set_is_uploaded (EPHY_SYNCHRONIZABLE (object), TRUE);
 
-free_serialized:
+free_parser:
+  g_object_unref (parser);
   g_free (serialized);
 out:
   return object;
