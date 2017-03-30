@@ -149,10 +149,13 @@ static const char * const ephy_prefs_web_schema[] = {
 #define EPHY_PREFS_LOCKDOWN_PRINTING          "disable-printing"
 #define EPHY_PREFS_LOCKDOWN_QUIT              "disable-quit"
 
-#define EPHY_PREFS_SYNC_SCHEMA                  "org.gnome.Epiphany.sync"
-#define EPHY_PREFS_SYNC_USER                    "sync-user"
-#define EPHY_PREFS_SYNC_BOOKMARKS_SYNC_TIME     "bookmarks-sync-time"
-#define EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC  "bookmarks-initial-sync"
+#define EPHY_PREFS_SYNC_SCHEMA            "org.gnome.Epiphany.sync"
+#define EPHY_PREFS_SYNC_USER              "sync-user"
+#define EPHY_PREFS_SYNC_FREQUENCY         "sync-frequency"
+#define EPHY_PREFS_SYNC_WITH_FIREFOX      "sync-with-firefox"
+#define EPHY_PREFS_SYNC_BOOKMARKS_ENABLED "sync-bookmarks-enabled"
+#define EPHY_PREFS_SYNC_BOOKMARKS_TIME    "sync-bookmarks-time"
+#define EPHY_PREFS_SYNC_BOOKMARKS_INITIAL "sync-bookmarks-initial"
 
 static struct {
   const char *schema;

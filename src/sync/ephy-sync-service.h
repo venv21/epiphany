@@ -45,10 +45,6 @@ void                 ephy_sync_service_set_token                  (EphySyncServi
                                                                    EphySyncTokenType          type);
 SyncCryptoKeyBundle *ephy_sync_service_get_key_bundle             (EphySyncService           *self,
                                                                    const char                *collection);
-void                 ephy_sync_service_register_manager           (EphySyncService           *self,
-                                                                   EphySynchronizableManager *manager);
-void                 ephy_sync_service_unregister_manager         (EphySyncService           *self,
-                                                                   EphySynchronizableManager *manager);
 void                 ephy_sync_service_clear_storage_credentials  (EphySyncService           *self);
 void                 ephy_sync_service_clear_tokens               (EphySyncService           *self);
 void                 ephy_sync_service_destroy_session            (EphySyncService           *self,
@@ -60,10 +56,10 @@ void                 ephy_sync_service_do_sign_in                 (EphySyncServi
                                                                    const char                *keyFetchToken,
                                                                    const char                *unwrapBKey);
 void                 ephy_sync_service_do_sign_out                (EphySyncService           *self);
+void                 ephy_sync_service_do_sync                    (EphySyncService           *self);
+void                 ephy_sync_service_start_periodical_sync      (EphySyncService           *self);
 void                 ephy_sync_service_delete_synchronizable      (EphySyncService           *self,
                                                                    EphySynchronizableManager *manager,
                                                                    EphySynchronizable        *synchronizable);
-void                 ephy_sync_service_start_periodical_sync      (EphySyncService           *self);
-void                 ephy_sync_service_stop_periodical_sync       (EphySyncService           *self);
 
 G_END_DECLS

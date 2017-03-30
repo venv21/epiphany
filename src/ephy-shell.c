@@ -372,10 +372,6 @@ ephy_shell_startup (GApplication *application)
                       "sync-tokens-load-finished",
                       G_CALLBACK (sync_tokens_load_finished_cb), NULL);
 
-    /* Register the bookmarks collection. */
-    ephy_sync_service_register_manager (ephy_shell->sync_service,
-                                        EPHY_SYNCHRONIZABLE_MANAGER (ephy_shell_get_bookmarks_manager (ephy_shell)));
-
     gtk_application_set_app_menu (GTK_APPLICATION (application),
                                   G_MENU_MODEL (gtk_builder_get_object (builder, "app-menu")));
   } else {
@@ -888,6 +884,20 @@ ephy_shell_get_prefs_dialog (EphyShell *shell)
   }
 
   return shell->prefs_dialog;
+}
+
+GList *
+ephy_shell_get_synchronizable_managers (EphyShell *shell)
+{
+  GList *managers = NULL;
+
+  g_return_val_if_fail (EPHY_IS_SHELL (shell), NULL);
+
+  if (g_settings_get_boolean (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_BOOKMARKS_ENABLED))
+    managers = g_list_prepend (managers,
+                              EPHY_SYNCHRONIZABLE_MANAGER (ephy_shell_get_bookmarks_manager (shell)));
+
+  return managers;
 }
 
 void

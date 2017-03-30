@@ -35,7 +35,6 @@
 
 #define MOZILLA_TOKEN_SERVER_URL  "https://token.services.mozilla.com/1.0/sync/1.5"
 #define MOZILLA_FXA_SERVER_URL    "https://api.accounts.firefox.com/v1/"
-#define SYNC_FREQUENCY            (15 * 60)        /* seconds */
 #define CERTIFICATE_DURATION      (60 * 60 * 1000) /* milliseconds, limited to 24 hours */
 #define ASSERTION_DURATION        (5 * 60)         /* seconds */
 #define STORAGE_VERSION           5
@@ -50,8 +49,6 @@ struct _EphySyncService {
   char        *sessionToken;
   char        *kB;
   GHashTable  *key_bundles;
-
-  GHashTable  *managers;
 
   char        *user_email;
   double       sync_time;
@@ -74,6 +71,8 @@ enum {
   STORE_FINISHED,
   LOAD_FINISHED,
   SIGN_IN_ERROR,
+  SYNC_FREQUENCY_CHANGED,
+  SYNC_FINISHED,
   LAST_SIGNAL
 };
 
@@ -103,6 +102,8 @@ typedef struct {
 typedef struct {
   EphySynchronizableManager *manager;
   gboolean                   is_initial;
+  guint                      collection_index;
+  guint                      num_collections;
 } SyncCollectionAsyncData;
 
 typedef struct {
@@ -111,6 +112,7 @@ typedef struct {
 } SyncAsyncData;
 
 static void ephy_sync_service_send_next_storage_request (EphySyncService *self);
+static void ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self);
 
 static StorageRequestAsyncData *
 storage_request_async_data_new (const char          *endpoint,
@@ -193,13 +195,17 @@ sign_in_async_data_free (SignInAsyncData *data)
 
 static SyncCollectionAsyncData *
 sync_collection_async_data_new (EphySynchronizableManager *manager,
-                                gboolean                   is_initial)
+                                gboolean                   is_initial,
+                                guint                      collection_index,
+                                guint                      num_collections)
 {
   SyncCollectionAsyncData *data;
 
   data = g_slice_new (SyncCollectionAsyncData);
   data->manager = g_object_ref (manager);
   data->is_initial = is_initial;
+  data->collection_index = collection_index;
+  data->num_collections = num_collections;
 
   return data;
 }
@@ -249,6 +255,56 @@ ephy_sync_service_storage_credentials_is_expired (EphySyncService *self)
 
   /* Consider a 60 seconds safety interval. */
   return self->storage_credentials_expiry_time < ephy_sync_utils_current_time_seconds () - 60;
+}
+
+static void
+ephy_sync_service_stop_periodical_sync (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  if (self->source_id != 0) {
+    g_source_remove (self->source_id);
+    self->source_id = 0;
+  }
+}
+
+static gboolean
+ephy_sync_service_sync (gpointer user_data)
+{
+  EphySyncService *service = EPHY_SYNC_SERVICE (user_data);
+  GList *managers = NULL;
+
+  managers = ephy_shell_get_synchronizable_managers (ephy_shell_get_default ());
+  if (managers) {
+    ephy_sync_service_obtain_sync_key_bundles (service);
+    g_list_free (managers);
+  } else {
+    g_signal_emit (service, signals[SYNC_FINISHED], 0);
+  }
+
+  return G_SOURCE_CONTINUE;
+}
+
+static void
+ephy_sync_service_schedule_periodical_sync (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  self->source_id = g_timeout_add_seconds (g_settings_get_uint (EPHY_SETTINGS_SYNC,
+                                                                EPHY_PREFS_SYNC_FREQUENCY) * 60,
+                                           ephy_sync_service_sync,
+                                           self);
+  LOG ("Scheduled new sync with frequency %u mins",
+       g_settings_get_uint (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_FREQUENCY));
+}
+
+static void
+ephy_sync_service_sync_frequency_changed_cb (EphySyncService *self)
+{
+  g_assert (EPHY_IS_SYNC_SERVICE (self));
+
+  ephy_sync_service_stop_periodical_sync (self);
+  ephy_sync_service_schedule_periodical_sync (self);
 }
 
 static void
@@ -668,7 +724,6 @@ ephy_sync_service_finalize (GObject *object)
 
   g_queue_free_full (self->storage_queue, (GDestroyNotify) storage_request_async_data_free);
   g_hash_table_destroy (self->key_bundles);
-  g_hash_table_destroy (self->managers);
 
   G_OBJECT_CLASS (ephy_sync_service_parent_class)->finalize (object);
 }
@@ -720,6 +775,20 @@ ephy_sync_service_class_init (EphySyncServiceClass *klass)
                   0, NULL, NULL, NULL,
                   G_TYPE_NONE, 1,
                   G_TYPE_STRING);
+
+  signals[SYNC_FREQUENCY_CHANGED] =
+    g_signal_new ("sync-frequency-changed",
+                  EPHY_TYPE_SYNC_SERVICE,
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
+
+  signals[SYNC_FINISHED] =
+    g_signal_new ("sync-finished",
+                  EPHY_TYPE_SYNC_SERVICE,
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -733,7 +802,6 @@ ephy_sync_service_init (EphySyncService *self)
   self->storage_queue = g_queue_new ();
   self->key_bundles = g_hash_table_new_full (g_str_hash, g_str_equal,
                                              NULL, (GDestroyNotify)ephy_sync_crypto_key_bundle_free);
-  self->managers = g_hash_table_new (g_str_hash, g_str_equal);
 
   settings = ephy_embed_prefs_get_settings ();
   user_agent = webkit_settings_get_user_agent (settings);
@@ -745,6 +813,10 @@ ephy_sync_service_init (EphySyncService *self)
     ephy_sync_service_set_user_email (self, email);
     ephy_sync_secret_load_tokens (self);
   }
+
+  g_signal_connect (self, "sync-frequency-changed",
+                    G_CALLBACK (ephy_sync_service_sync_frequency_changed_cb),
+                    NULL);
 
   g_free (email);
 }
@@ -839,32 +911,6 @@ ephy_sync_service_get_key_bundle (EphySyncService *self,
     bundle = g_hash_table_lookup (self->key_bundles, "default");
 
   return bundle;
-}
-
-void
-ephy_sync_service_register_manager (EphySyncService           *self,
-                                    EphySynchronizableManager *manager)
-{
-  const char *collection;
-
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
-
-  collection = ephy_synchronizable_manager_get_collection_name (manager);
-  g_hash_table_insert (self->managers, (char *)collection, manager);
-}
-
-void
-ephy_sync_service_unregister_manager (EphySyncService           *self,
-                                      EphySynchronizableManager *manager)
-{
-  const char *collection;
-
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
-
-  collection = ephy_synchronizable_manager_get_collection_name (manager);
-  g_hash_table_remove (self->managers, collection);
 }
 
 void
@@ -1462,13 +1508,18 @@ free_parser:
   if (parser)
     g_object_unref (parser);
 out:
+  if (data->collection_index == data->num_collections)
+    g_signal_emit (service, signals[SYNC_FINISHED], 0);
+
   sync_collection_async_data_free (data);
   ephy_sync_service_send_next_storage_request (service);
 }
 
 static void
 ephy_sync_service_sync_collection (EphySyncService           *self,
-                                   EphySynchronizableManager *manager)
+                                   EphySynchronizableManager *manager,
+                                   guint                      collection_index,
+                                   guint                      num_collections)
 {
   SyncCollectionAsyncData *data;
   const char *collection;
@@ -1481,7 +1532,7 @@ ephy_sync_service_sync_collection (EphySyncService           *self,
   collection = ephy_synchronizable_manager_get_collection_name (manager);
   endpoint = g_strdup_printf ("storage/%s?full=true", collection);
   is_initial = ephy_synchronizable_manager_is_initial_sync (manager);
-  data = sync_collection_async_data_new (manager, is_initial);
+  data = sync_collection_async_data_new (manager, is_initial, collection_index, num_collections);
 
   LOG ("Syncing %s collection...", collection);
   ephy_sync_service_queue_storage_request (self, endpoint, SOUP_METHOD_GET, NULL,
@@ -1489,22 +1540,6 @@ ephy_sync_service_sync_collection (EphySyncService           *self,
                                            -1, sync_collection_cb, data);
 
   g_free (endpoint);
-}
-
-static gboolean
-ephy_sync_service_do_sync (gpointer user_data)
-{
-  EphySyncService *service;
-  GHashTableIter it;
-  gpointer key;
-  gpointer value;
-
-  service = EPHY_SYNC_SERVICE (user_data);
-  g_hash_table_iter_init (&it, service->managers);
-  while (g_hash_table_iter_next (&it, &key, &value))
-    ephy_sync_service_sync_collection (service, EPHY_SYNCHRONIZABLE_MANAGER (value));
-
-  return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -1521,10 +1556,12 @@ obtain_sync_key_bundles_cb (SoupSession *session,
   JsonArray *array;
   JsonObjectIter iter;
   GError *error = NULL;
+  GList *managers = NULL;
   const char *member;
   const char *payload;
   char *record;
   guint8 *kB;
+  gboolean sync_finished = TRUE;
 
   service = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
@@ -1616,11 +1653,20 @@ obtain_sync_key_bundles_cb (SoupSession *session,
     }
   }
 
-  /* Successfully retrieved key bundles, do sync. */
-  ephy_sync_service_do_sync (service);
-  service->source_id = g_timeout_add_seconds (SYNC_FREQUENCY,
-                                              ephy_sync_service_do_sync,
-                                              service);
+  /* Successfully retrieved key bundles, sync collections. */
+  managers = ephy_shell_get_synchronizable_managers (ephy_shell_get_default ());
+  if (managers) {
+    guint num_managers = g_list_length (managers);
+    guint index = 1;
+
+    for (GList *l = managers; l && l->data; l = l->next, index++)
+      ephy_sync_service_sync_collection (service,
+                                         EPHY_SYNCHRONIZABLE_MANAGER (l->data),
+                                         index, num_managers);
+
+    g_list_free (managers);
+    sync_finished = FALSE;
+  }
 
 free_record:
   g_free (record);
@@ -1630,6 +1676,9 @@ free_bundle:
 free_parser:
   g_object_unref (parser);
 out:
+  if (sync_finished)
+    g_signal_emit (service, signals[SYNC_FINISHED], 0);
+
   ephy_sync_service_send_next_storage_request (service);
 }
 
@@ -1645,22 +1694,20 @@ ephy_sync_service_obtain_sync_key_bundles (EphySyncService *self)
 }
 
 void
+ephy_sync_service_do_sync (EphySyncService *self)
+{
+  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (ephy_sync_service_is_signed_in (self));
+
+  ephy_sync_service_sync (self);
+}
+
+void
 ephy_sync_service_start_periodical_sync (EphySyncService *self)
 {
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
   g_return_if_fail (ephy_sync_service_is_signed_in (self));
 
-  ephy_sync_service_obtain_sync_key_bundles (self);
-}
-
-void
-ephy_sync_service_stop_periodical_sync (EphySyncService *self)
-{
-  g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
-  g_return_if_fail (ephy_sync_service_is_signed_in (self));
-
-  if (self->source_id != 0) {
-    g_source_remove (self->source_id);
-    self->source_id = 0;
-  }
+  ephy_sync_service_sync (self);
+  ephy_sync_service_schedule_periodical_sync (self);
 }

@@ -245,7 +245,10 @@ list_model_iface_init (GListModelInterface *iface)
 static const char *
 synchronizable_manager_get_collection_name (EphySynchronizableManager *manager)
 {
-  return "bookmarks";
+  gboolean sync_with_firefox = g_settings_get_boolean (EPHY_SETTINGS_SYNC,
+                                                       EPHY_PREFS_SYNC_WITH_FIREFOX);
+
+  return sync_with_firefox ? "bookmarks" : "ephy-bookmarks";
 }
 
 static GType
@@ -258,7 +261,7 @@ static gboolean
 synchronizable_manager_is_initial_sync (EphySynchronizableManager *manager)
 {
   return g_settings_get_boolean (EPHY_SETTINGS_SYNC,
-                                 EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC);
+                                 EPHY_PREFS_SYNC_BOOKMARKS_INITIAL);
 }
 
 static void
@@ -266,20 +269,21 @@ synchronizable_manager_set_is_initial_sync (EphySynchronizableManager *manager,
                                             gboolean                   is_initial)
 {
   g_settings_set_boolean (EPHY_SETTINGS_SYNC,
-                          EPHY_PREFS_SYNC_BOOKMARKS_INITIAL_SYNC, is_initial);
+                          EPHY_PREFS_SYNC_BOOKMARKS_INITIAL,
+                          is_initial);
 }
 
 static double
 synchronizable_manager_get_sync_time (EphySynchronizableManager *manager)
 {
-  return g_settings_get_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_BOOKMARKS_SYNC_TIME);
+  return g_settings_get_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_BOOKMARKS_TIME);
 }
 
 static void
 synchronizable_manager_set_sync_time (EphySynchronizableManager *manager,
                                       double                     sync_time)
 {
-  g_settings_set_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_BOOKMARKS_SYNC_TIME, sync_time);
+  g_settings_set_double (EPHY_SETTINGS_SYNC, EPHY_PREFS_SYNC_BOOKMARKS_TIME, sync_time);
 }
 
 static void

@@ -108,6 +108,8 @@ GtkWidget       *ephy_shell_get_history_dialog           (EphyShell *shell);
 
 GObject         *ephy_shell_get_prefs_dialog             (EphyShell *shell);
 
+GList           *ephy_shell_get_synchronizable_managers  (EphyShell *shell);
+
 guint           ephy_shell_get_n_windows                (EphyShell *shell);
 
 gboolean        ephy_shell_close_all_windows            (EphyShell *shell);
