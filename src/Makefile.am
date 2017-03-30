@@ -72,14 +72,7 @@ libephymain_la_SOURCES = \
 	prefs-dialog.c				\
 	prefs-dialog.h				\
 	window-commands.c			\
-	window-commands.h
-
-if ENABLE_SYNC
-libephymain_la_SOURCES += \
-	sync/ephy-synchronizable.c		\
-	sync/ephy-synchronizable.h		\
-	sync/ephy-synchronizable-manager.c	\
-	sync/ephy-synchronizable-manager.h	\
+	window-commands.h			\
 	sync/ephy-sync-crypto.c			\
 	sync/ephy-sync-crypto.h			\
 	sync/ephy-sync-secret.c			\
@@ -87,8 +80,11 @@ libephymain_la_SOURCES += \
 	sync/ephy-sync-service.c		\
 	sync/ephy-sync-service.h		\
 	sync/ephy-sync-utils.c			\
-	sync/ephy-sync-utils.h
-endif
+	sync/ephy-sync-utils.h			\
+	sync/ephy-synchronizable.c		\
+	sync/ephy-synchronizable.h		\
+	sync/ephy-synchronizable-manager.c	\
+	sync/ephy-synchronizable-manager.h
 
 nodist_libephymain_la_SOURCES = \
 	$(TYPES_SOURCE)

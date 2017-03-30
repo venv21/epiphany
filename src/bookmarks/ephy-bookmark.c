@@ -23,14 +23,11 @@
 #include "ephy-bookmark.h"
 
 #include "ephy-shell.h"
-
-#include <string.h>
-
-#ifdef ENABLE_SYNC
-#include "ephy-synchronizable.h"
 #include "ephy-sync-crypto.h"
 #include "ephy-sync-utils.h"
-#endif
+#include "ephy-synchronizable.h"
+
+#include <string.h>
 
 #define BOOKMARK_TYPE_VAL            "bookmark"
 #define BOOKMARK_PARENT_ID_VAL       "toolbar"

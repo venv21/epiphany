@@ -38,6 +38,7 @@
 #include "ephy-settings.h"
 #include "ephy-shell.h"
 #include "ephy-string.h"
+#include "ephy-sync-service.h"
 #include "ephy-uri-tester-shared.h"
 #include "clear-data-dialog.h"
 #include "cookies-dialog.h"
@@ -49,11 +50,6 @@
 #include <JavaScriptCore/JavaScript.h>
 #include <json-glib/json-glib.h>
 #include <string.h>
-
-#ifdef ENABLE_SYNC
-#include "ephy-sync-secret.h"
-#include "ephy-sync-service.h"
-#endif
 
 #define DOWNLOAD_BUTTON_WIDTH   8
 #define FXA_IFRAME_URL "https://accounts.firefox.com/signin?service=sync&context=fx_ios_v1"
@@ -114,7 +110,6 @@ struct _PrefsDialog {
   GHashTable *iso_639_table;
   GHashTable *iso_3166_table;
 
-#ifdef ENABLE_SYNC
   /* sync */
   GtkWidget *sync_authenticate_box;
   GtkWidget *sync_sign_in_box;
@@ -126,8 +121,6 @@ struct _PrefsDialog {
   WebKitWebView *fxa_web_view;
   WebKitUserContentManager *fxa_manager;
   WebKitUserScript *fxa_script;
-#endif
-  GtkWidget *notebook;
 };
 
 enum {
@@ -154,19 +147,16 @@ prefs_dialog_finalize (GObject *object)
   g_hash_table_destroy (dialog->iso_639_table);
   g_hash_table_destroy (dialog->iso_3166_table);
 
-#ifdef ENABLE_SYNC
   if (dialog->fxa_web_view != NULL) {
     webkit_user_content_manager_unregister_script_message_handler (dialog->fxa_manager,
                                                                    "accountsCommandHandler");
     webkit_user_script_unref (dialog->fxa_script);
     g_object_unref (dialog->fxa_manager);
   }
-#endif
 
   G_OBJECT_CLASS (prefs_dialog_parent_class)->finalize (object);
 }
 
-#ifdef ENABLE_SYNC
 static void
 sync_sign_in_details_show (PrefsDialog *dialog,
                            const char  *text)
@@ -181,7 +171,6 @@ sync_sign_in_details_show (PrefsDialog *dialog,
 
   g_free (message);
 }
-
 
 static void
 sync_sign_in_error_cb (EphySyncService *service,
@@ -427,7 +416,6 @@ on_sync_sign_out_button_clicked (GtkWidget   *button,
                       TRUE, TRUE, 0);
   gtk_widget_set_visible (dialog->sync_sign_in_details, FALSE);
 }
-#endif
 
 static void
 on_manage_cookies_button_clicked (GtkWidget   *button,
@@ -519,7 +507,6 @@ prefs_dialog_class_init (PrefsDialogClass *klass)
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, lang_down_button);
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, enable_spell_checking_checkbutton);
 
-#ifdef ENABLE_SYNC
   /* sync */
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, sync_authenticate_box);
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, sync_sign_in_box);
@@ -527,12 +514,11 @@ prefs_dialog_class_init (PrefsDialogClass *klass)
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, sync_sign_out_box);
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, sync_sign_out_details);
   gtk_widget_class_bind_template_child (widget_class, PrefsDialog, sync_sign_out_button);
-#endif
-  gtk_widget_class_bind_template_child (widget_class, PrefsDialog, notebook);
 
   gtk_widget_class_bind_template_callback (widget_class, on_manage_cookies_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_manage_passwords_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_search_engine_dialog_button_clicked);
+  gtk_widget_class_bind_template_callback (widget_class, on_sync_sign_out_button_clicked);
 }
 
 static void
@@ -1513,7 +1499,6 @@ setup_language_page (PrefsDialog *dialog)
   create_language_section (dialog);
 }
 
-#ifdef ENABLE_SYNC
 static void
 setup_sync_page (PrefsDialog *dialog)
 {
@@ -1547,7 +1532,6 @@ setup_sync_page (PrefsDialog *dialog)
                            G_CALLBACK (sync_sign_in_error_cb),
                            dialog, 0);
 }
-#endif
 
 static void
 prefs_dialog_init (PrefsDialog *dialog)
@@ -1572,18 +1556,8 @@ prefs_dialog_init (PrefsDialog *dialog)
   setup_fonts_page (dialog);
   setup_stored_data_page (dialog);
   setup_language_page (dialog);
-#ifdef ENABLE_SYNC
-  if (mode != EPHY_EMBED_SHELL_MODE_APPLICATION) {
+  if (mode != EPHY_EMBED_SHELL_MODE_APPLICATION)
     setup_sync_page (dialog);
-
-    /* TODO: Switch back to using a template callback in class_init once sync is unconditionally enabled. */
-    g_signal_connect (dialog->sync_sign_out_button, "clicked",
-                      G_CALLBACK (on_sync_sign_out_button_clicked), dialog);
-  } else
-    gtk_notebook_remove_page (GTK_NOTEBOOK (dialog->notebook), -1);
-#else
-  gtk_notebook_remove_page (GTK_NOTEBOOK (dialog->notebook), -1);
-#endif
 
   ephy_gui_ensure_window_group (GTK_WINDOW (dialog));
   g_signal_connect (dialog, "response",
