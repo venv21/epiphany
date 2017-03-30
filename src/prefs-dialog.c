@@ -238,6 +238,7 @@ sync_tokens_store_finished_cb (EphySyncService *service,
                             TRUE);
 
     /* Start syncing. */
+    /* TODO: Register the synchronizable managers before calling this. */
     ephy_sync_service_start_periodical_sync (service);
   } else {
     /* Destroy the current session. */

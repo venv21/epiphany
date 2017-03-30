@@ -1540,6 +1540,22 @@ ephy_sync_service_sync_collection (EphySyncService           *self,
   g_free (endpoint);
 }
 
+static gboolean
+ephy_sync_service_do_sync (gpointer user_data)
+{
+  EphySyncService *service;
+  GHashTableIter it;
+  gpointer key;
+  gpointer value;
+
+  service = EPHY_SYNC_SERVICE (user_data);
+  g_hash_table_iter_init (&it, service->managers);
+  while (g_hash_table_iter_next (&it, &key, &value))
+    ephy_sync_service_sync_collection (service, EPHY_SYNCHRONIZABLE_MANAGER (value));
+
+  return G_SOURCE_CONTINUE;
+}
+
 static void
 obtain_sync_key_bundles_cb (SoupSession *session,
                             SoupMessage *msg,
@@ -1649,7 +1665,11 @@ obtain_sync_key_bundles_cb (SoupSession *session,
     }
   }
 
-  /* TODO: Successfully retrieved key bundles, do sync. */
+  /* Successfully retrieved key bundles, do sync. */
+  ephy_sync_service_do_sync (service);
+  service->source_id = g_timeout_add_seconds (SYNC_FREQUENCY,
+                                              ephy_sync_service_do_sync,
+                                              service);
 
 free_record:
   g_free (record);
@@ -1679,7 +1699,7 @@ ephy_sync_service_start_periodical_sync (EphySyncService *self)
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
   g_return_if_fail (ephy_sync_service_is_signed_in (self));
 
-  /* TODO: Re-implement this. */
+  ephy_sync_service_obtain_sync_key_bundles (self);
 }
 
 void

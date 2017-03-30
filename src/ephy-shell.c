@@ -379,6 +379,10 @@ ephy_shell_startup (GApplication *application)
     g_signal_connect (ephy_shell->sync_service,
                       "sync-tokens-load-finished",
                       G_CALLBACK (sync_tokens_load_finished_cb), NULL);
+
+    /* Register the bookmarks collection. */
+    ephy_sync_service_register_manager (ephy_shell->sync_service,
+                                        EPHY_SYNCHRONIZABLE_MANAGER (ephy_shell_get_bookmarks_manager (ephy_shell)));
 #endif
 
     gtk_application_set_app_menu (GTK_APPLICATION (application),
