@@ -37,6 +37,14 @@ ephy_synchronizable_manager_default_init (EphySynchronizableManagerInterface *if
   iface->merge_remotes = ephy_synchronizable_manager_merge_remotes;
 }
 
+/**
+ * ephy_synchronizable_manager_get_collection_name:
+ * @manager: an #EphySynchronizableManager
+ *
+ * Returns the name of the collection managed by @manager.
+ *
+ * Return value: (transfer none): @manager's collection name
+ **/
 const char *
 ephy_synchronizable_manager_get_collection_name (EphySynchronizableManager *manager)
 {
@@ -48,6 +56,14 @@ ephy_synchronizable_manager_get_collection_name (EphySynchronizableManager *mana
   return iface->get_collection_name (manager);
 }
 
+/**
+ * ephy_synchronizable_manager_get_synchronizable_type:
+ * @manager: an #EphySynchronizableManager
+ *
+ * Returns the #GType of the #EphySynchronizable objects managed by @manager.
+ *
+ * Return value: the #GType of @manager's objects
+ **/
 GType
 ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager *manager)
 {
@@ -59,6 +75,15 @@ ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager *
   return iface->get_synchronizable_type (manager);
 }
 
+/**
+ * ephy_synchronizable_manager_is_initial_sync:
+ * @manager: an #EphySynchronizableManager
+ *
+ * Returns a boolean saying whether the collection managed by @manager requires
+ * an initial sync (i.e. a first time sync).
+ *
+ * Return value: %TRUE is @manager's collections requires an initial sync, %FALSE otherwise
+ **/
 gboolean
 ephy_synchronizable_manager_is_initial_sync (EphySynchronizableManager *manager)
 {
@@ -70,6 +95,14 @@ ephy_synchronizable_manager_is_initial_sync (EphySynchronizableManager *manager)
   return iface->is_initial_sync (manager);
 }
 
+/**
+ * ephy_synchronizable_manager_set_is_initial_sync:
+ * @manager: an #EphySynchronizableManager
+ * @is_initial: a boolean saying whether the collection managed by @manager
+ *              requires an initial sync (i.e. a first time sync)
+ *
+ * Sets @manager's 'requires initial sync' flag.
+ **/
 void
 ephy_synchronizable_manager_set_is_initial_sync (EphySynchronizableManager *manager,
                                                  gboolean                   is_initial)
@@ -82,6 +115,15 @@ ephy_synchronizable_manager_set_is_initial_sync (EphySynchronizableManager *mana
   iface->set_is_initial_sync (manager, is_initial);
 }
 
+/**
+ * ephy_synchronizable_manager_get_sync_time:
+ * @manager: an #EphySynchronizableManager
+ *
+ * Returns the timestamp at which @manager's collection was last synced,
+ * in seconds since UNIX epoch.
+ *
+ * Return value: the timestamp of @manager's collection last sync.
+ **/
 double
 ephy_synchronizable_manager_get_sync_time (EphySynchronizableManager *manager)
 {
@@ -93,6 +135,13 @@ ephy_synchronizable_manager_get_sync_time (EphySynchronizableManager *manager)
   return iface->get_sync_time (manager);
 }
 
+/**
+ * ephy_synchronizable_manager_set_sync_time:
+ * @manager: an #EphySynchronizableManager
+ * @sync_time: the timestamp of the last sync, in seconds since UNIX epoch
+ *
+ * Sets the timestamp at which @manager's collection was last synced.
+ **/
 void
 ephy_synchronizable_manager_set_sync_time (EphySynchronizableManager *manager,
                                            double                     sync_time)
@@ -105,6 +154,13 @@ ephy_synchronizable_manager_set_sync_time (EphySynchronizableManager *manager,
   iface->set_sync_time (manager, sync_time);
 }
 
+/**
+ * ephy_synchronizable_manager_add:
+ * @manager: an #EphySynchronizableManager
+ * @synchronizable: (transfer none): an #EphySynchronizable
+ *
+ * Adds @synchronizable to the local instance of the collection managed by @manager.
+ **/
 void
 ephy_synchronizable_manager_add (EphySynchronizableManager *manager,
                                  EphySynchronizable        *synchronizable)
@@ -118,6 +174,13 @@ ephy_synchronizable_manager_add (EphySynchronizableManager *manager,
   iface->add (manager, synchronizable);
 }
 
+/**
+ * ephy_synchronizable_manager_remove:
+ * @manager: an #EphySynchronizableManager
+ * @synchronizable: (transfer full): an #EphySynchronizable
+ *
+ * Removes @synchronizable from the local instance of the collection managed by @manager.
+ **/
 void
 ephy_synchronizable_manager_remove (EphySynchronizableManager *manager,
                                     EphySynchronizable        *synchronizable)
@@ -131,18 +194,33 @@ ephy_synchronizable_manager_remove (EphySynchronizableManager *manager,
   iface->remove (manager, synchronizable);
 }
 
+/**
+ * ephy_synchronizable_manager_merge_remotes:
+ * @manager: an #EphySynchronizableManager
+ * @is_initial: a boolean saying whether the collection managed by @manager
+ *              requires an initial sync (i.e. a first time sync)
+ * @remotes_deleted: (transfer none): a #GList holding the #EphySynchronizable
+ *                   objects that were removed remotely from the server.
+ * @remotes_updated: (transfer none): a #GList holding the #EphySynchronizable
+ *                   objects that were updated remotely on the server.
+ * @to_upload: (transfer full): an address of a #GList where to put the
+ *             #EphySynchronizable objects that need to be re-uploaded to server.
+ *
+ * Merges a list of remote-deleted objects and a list of remote-updated objects
+ * with the local objects in @manager's collection.
+ **/
 void
 ephy_synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
                                            gboolean                    is_initial,
                                            GList                      *remotes_deleted,
-                                           GList                      *remtoes_updated,
-                                           GList                     **to_updload)
+                                           GList                      *remotes_updated,
+                                           GList                     **to_upload)
 {
   EphySynchronizableManagerInterface *iface;
 
   g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
-  g_return_if_fail (to_updload);
+  g_return_if_fail (to_upload);
 
   iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
-  iface->merge_remotes (manager, is_initial, remotes_deleted, remtoes_updated, to_updload);
+  iface->merge_remotes (manager, is_initial, remotes_deleted, remotes_updated, to_upload);
 }
