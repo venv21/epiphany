@@ -1428,7 +1428,7 @@ sync_collection_cb (SoupSession *session,
   GError *error = NULL;
   GList *remotes_updated = NULL;
   GList *remotes_deleted = NULL;
-  GList *to_upload = NULL;
+  GList *to_upload;
   GType type;
   const char *collection;
   const char *timestamp;
@@ -1485,8 +1485,8 @@ sync_collection_cb (SoupSession *session,
   }
 
 merge_remotes:
-  ephy_synchronizable_manager_merge_remotes (data->manager, data->is_initial,
-                                             remotes_deleted, remotes_updated, &to_upload);
+  to_upload = ephy_synchronizable_manager_merge_remotes (data->manager, data->is_initial,
+                                                         remotes_deleted, remotes_updated);
 
   if (to_upload) {
     LOG ("Uploading local objects to server...");
@@ -1501,9 +1501,9 @@ merge_remotes:
   timestamp = soup_message_headers_get_one (msg->response_headers, "X-Weave-Timestamp");
   ephy_synchronizable_manager_set_sync_time (data->manager, g_ascii_strtod (timestamp, NULL));
 
-  g_list_free (to_upload);
-  g_list_free (remotes_updated);
-  g_list_free (remotes_deleted);
+  g_list_free_full (to_upload, g_object_unref);
+  g_list_free_full (remotes_updated, g_object_unref);
+  g_list_free_full (remotes_deleted, g_object_unref);
 free_parser:
   if (parser)
     g_object_unref (parser);

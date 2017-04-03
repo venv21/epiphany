@@ -203,24 +203,23 @@ ephy_synchronizable_manager_remove (EphySynchronizableManager *manager,
  *                   objects that were removed remotely from the server.
  * @remotes_updated: (transfer none): a #GList holding the #EphySynchronizable
  *                   objects that were updated remotely on the server.
- * @to_upload: (transfer full): an address of a #GList where to put the
- *             #EphySynchronizable objects that need to be re-uploaded to server.
  *
  * Merges a list of remote-deleted objects and a list of remote-updated objects
  * with the local objects in @manager's collection.
+ *
+ * Return value: (transfer full): a #GList holding the #EphySynchronizable
+ *               objects that need to be re-uploaded to server.
  **/
-void
-ephy_synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
-                                           gboolean                    is_initial,
-                                           GList                      *remotes_deleted,
-                                           GList                      *remotes_updated,
-                                           GList                     **to_upload)
+GList *
+ephy_synchronizable_manager_merge_remotes (EphySynchronizableManager *manager,
+                                           gboolean                   is_initial,
+                                           GList                     *remotes_deleted,
+                                           GList                     *remotes_updated)
 {
   EphySynchronizableManagerInterface *iface;
 
-  g_return_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager));
-  g_return_if_fail (to_upload);
+  g_return_val_if_fail (EPHY_IS_SYNCHRONIZABLE_MANAGER (manager), NULL);
 
   iface = EPHY_SYNCHRONIZABLE_MANAGER_GET_IFACE (manager);
-  iface->merge_remotes (manager, is_initial, remotes_deleted, remotes_updated, to_upload);
+  return iface->merge_remotes (manager, is_initial, remotes_deleted, remotes_updated);
 }

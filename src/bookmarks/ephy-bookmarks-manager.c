@@ -307,12 +307,11 @@ synchronizable_manager_remove (EphySynchronizableManager *manager,
   ephy_bookmarks_manager_remove_bookmark (self, bookmark);
 }
 
-static void
-synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
-                                      gboolean                    is_initial,
-                                      GList                      *remotes_deleted,
-                                      GList                      *remotes_updated,
-                                      GList                     **to_upload)
+static GList *
+synchronizable_manager_merge_remotes (EphySynchronizableManager *manager,
+                                      gboolean                   is_initial,
+                                      GList                     *remotes_deleted,
+                                      GList                     *remotes_updated)
 {
   EphyBookmarksManager *self;
   EphyBookmark *remote;
@@ -320,6 +319,7 @@ synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
   GSequence *bookmarks;
   GSequenceIter *iter;
   GHashTable *handled;
+  GList *to_upload = NULL;
   char *type;
   char *parent_id;
   const char *id;
@@ -335,17 +335,13 @@ synchronizable_manager_merge_remotes (EphySynchronizableManager  *manager,
     remote = EPHY_BOOKMARK (l->data);
     id = ephy_bookmark_get_id (remote);
     local = ephy_bookmarks_manager_get_bookmark_by_id (self, id);
-
-    if (!local) {
-      g_object_unref (remote);
-      continue;
-    }
-
-    if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote)) {
-      *to_upload = g_list_prepend (*to_upload, local);
-      g_hash_table_add (handled, (char *)id);
-    } else {
-      ephy_bookmarks_manager_remove_bookmark (self, local);
+    if (local) {
+      if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote)) {
+        to_upload = g_list_prepend (to_upload, local);
+        g_hash_table_add (handled, (char *)id);
+      } else {
+        ephy_bookmarks_manager_remove_bookmark (self, local);
+      }
     }
   }
 
@@ -377,10 +373,10 @@ handle_updated:
         ephy_bookmarks_manager_create_tags_from_bookmark (self, remote);
       } else if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote)) {
         ephy_bookmarks_manager_create_tags_from_bookmark (self, remote);
-        *to_upload = g_list_prepend (*to_upload, local);
+        to_upload = g_list_prepend (to_upload, local);
       } else {
         if (ephy_bookmark_get_modification_time (local) > ephy_bookmark_get_modification_time (remote))
-          *to_upload = g_list_prepend (*to_upload, local);
+          to_upload = g_list_prepend (to_upload, local);
         g_hash_table_add (handled, local);
       }
     }
@@ -389,7 +385,6 @@ handle_updated:
 next:
     g_free (type);
     g_free (parent_id);
-    g_object_unref (remote);
   }
 
   /* Upload unhandled bookmarks to server. */
@@ -401,7 +396,7 @@ next:
     id = ephy_bookmark_get_id (local);
     if (!g_hash_table_contains (handled, id)) {
       if (is_initial || (!is_initial && !ephy_bookmark_is_uploaded (local)))
-        *to_upload = g_list_prepend (*to_upload, local);
+        to_upload = g_list_prepend (to_upload, local);
     }
   }
 
@@ -409,8 +404,9 @@ next:
   ephy_bookmarks_manager_save_to_file_async (self, NULL,
                                              (GAsyncReadyCallback)ephy_bookmarks_manager_save_to_file_warn_on_error_cb,
                                              NULL);
+  g_hash_table_destroy (handled);
 
-  g_hash_table_unref (handled);
+  return to_upload;
 }
 
 static void

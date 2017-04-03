@@ -33,45 +33,43 @@ G_DECLARE_INTERFACE (EphySynchronizableManager, ephy_synchronizable_manager, EPH
 struct _EphySynchronizableManagerInterface {
   GTypeInterface parent_iface;
 
-  const char         * (*get_collection_name)     (EphySynchronizableManager  *manager);
-  GType                (*get_synchronizable_type) (EphySynchronizableManager  *manager);
+  const char         * (*get_collection_name)     (EphySynchronizableManager *manager);
+  GType                (*get_synchronizable_type) (EphySynchronizableManager *manager);
 
-  gboolean             (*is_initial_sync)         (EphySynchronizableManager  *manager);
-  void                 (*set_is_initial_sync)     (EphySynchronizableManager  *manager,
-                                                   gboolean                    is_initial);
+  gboolean             (*is_initial_sync)         (EphySynchronizableManager *manager);
+  void                 (*set_is_initial_sync)     (EphySynchronizableManager *manager,
+                                                   gboolean                   is_initial);
 
-  double               (*get_sync_time)           (EphySynchronizableManager  *manager);
-  void                 (*set_sync_time)           (EphySynchronizableManager  *manager,
-                                                   double                      sync_time);
+  double               (*get_sync_time)           (EphySynchronizableManager *manager);
+  void                 (*set_sync_time)           (EphySynchronizableManager *manager,
+                                                   double                     sync_time);
 
-  void                 (*add)                     (EphySynchronizableManager  *manager,
-                                                   EphySynchronizable         *synchronizable);
-  void                 (*remove)                  (EphySynchronizableManager  *manager,
-                                                   EphySynchronizable         *synchronizable);
+  void                 (*add)                     (EphySynchronizableManager *manager,
+                                                   EphySynchronizable        *synchronizable);
+  void                 (*remove)                  (EphySynchronizableManager *manager,
+                                                   EphySynchronizable        *synchronizable);
 
-  void                 (*merge_remotes)           (EphySynchronizableManager  *manager,
-                                                   gboolean                    is_initial,
-                                                   GList                      *remotes_deleted,
-                                                   GList                      *remotes_updated,
-                                                   GList                     **to_upload);
+  GList              * (*merge_remotes)           (EphySynchronizableManager *manager,
+                                                   gboolean                   is_initial,
+                                                   GList                     *remotes_deleted,
+                                                   GList                     *remotes_updated);
 };
 
-const char         *ephy_synchronizable_manager_get_collection_name     (EphySynchronizableManager  *manager);
-GType               ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager  *manager);
-gboolean            ephy_synchronizable_manager_is_initial_sync         (EphySynchronizableManager  *manager);
-void                ephy_synchronizable_manager_set_is_initial_sync     (EphySynchronizableManager  *manager,
-                                                                         gboolean                    is_initial);
-double              ephy_synchronizable_manager_get_sync_time           (EphySynchronizableManager  *manager);
-void                ephy_synchronizable_manager_set_sync_time           (EphySynchronizableManager  *manager,
-                                                                         double                      sync_time);
-void                ephy_synchronizable_manager_add                     (EphySynchronizableManager  *manager,
-                                                                         EphySynchronizable         *synchronizable);
-void                ephy_synchronizable_manager_remove                  (EphySynchronizableManager  *manager,
-                                                                         EphySynchronizable         *synchronizable);
-void                ephy_synchronizable_manager_merge_remotes           (EphySynchronizableManager  *manager,
-                                                                         gboolean                    is_initial,
-                                                                         GList                      *remotes_deleted,
-                                                                         GList                      *remotes_updated,
-                                                                         GList                     **to_upload);
+const char         *ephy_synchronizable_manager_get_collection_name     (EphySynchronizableManager *manager);
+GType               ephy_synchronizable_manager_get_synchronizable_type (EphySynchronizableManager *manager);
+gboolean            ephy_synchronizable_manager_is_initial_sync         (EphySynchronizableManager *manager);
+void                ephy_synchronizable_manager_set_is_initial_sync     (EphySynchronizableManager *manager,
+                                                                         gboolean                   is_initial);
+double              ephy_synchronizable_manager_get_sync_time           (EphySynchronizableManager *manager);
+void                ephy_synchronizable_manager_set_sync_time           (EphySynchronizableManager *manager,
+                                                                         double                     sync_time);
+void                ephy_synchronizable_manager_add                     (EphySynchronizableManager *manager,
+                                                                         EphySynchronizable        *synchronizable);
+void                ephy_synchronizable_manager_remove                  (EphySynchronizableManager *manager,
+                                                                         EphySynchronizable        *synchronizable);
+GList              *ephy_synchronizable_manager_merge_remotes           (EphySynchronizableManager *manager,
+                                                                         gboolean                   is_initial,
+                                                                         GList                     *remotes_deleted,
+                                                                         GList                     *remotes_updated);
 
 G_END_DECLS
