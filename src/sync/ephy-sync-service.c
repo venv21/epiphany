@@ -445,7 +445,7 @@ obtain_storage_credentials_cb (SoupSession *session,
                                gpointer     user_data)
 {
   EphySyncService *self;
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *json;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
@@ -458,10 +458,8 @@ obtain_storage_credentials_cb (SoupSession *session,
     return;
   }
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-
+  node = json_from_string (msg->response_body->data, NULL);
+  json = json_node_get_object (node);
   self->storage_endpoint = g_strdup (json_object_get_string_member (json, "api_endpoint"));
   self->storage_credentials_id = g_strdup (json_object_get_string_member (json, "id"));
   self->storage_credentials_key = g_strdup (json_object_get_string_member (json, "key"));
@@ -470,7 +468,7 @@ obtain_storage_credentials_cb (SoupSession *session,
   self->locked = FALSE;
   ephy_sync_service_send_next_storage_request (self);
 
-  g_object_unref (parser);
+  json_node_unref (node);
 }
 
 static void
@@ -519,15 +517,14 @@ obtain_signed_certificate_cb (SoupSession *session,
                               gpointer     user_data)
 {
   EphySyncService *self;
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *json;
   const char *certificate;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
+  node = json_from_string (msg->response_body->data, NULL);
+  json = json_node_get_object (node);
 
   /* Since a new Firefox Account password implies new tokens, this will fail
    * with an error code 110 (Invalid authentication token in request signature)
@@ -567,7 +564,7 @@ obtain_signed_certificate_cb (SoupSession *session,
   ephy_sync_service_obtain_storage_credentials (self);
 
 out:
-  g_object_unref (parser);
+  json_node_unref (node);
 }
 
 static void
@@ -1121,14 +1118,13 @@ get_account_keys_cb (SoupSession *session,
 {
   EphySyncService *self;
   SignInAsyncData *data;
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *json;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
   data = (SignInAsyncData *)user_data;
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
+  node = json_from_string (msg->response_body->data, NULL);
+  json = json_node_get_object (node);
 
   if (msg->status_code == 200) {
     /* Extract the master sync keys from the bundle and save tokens. */
@@ -1149,7 +1145,7 @@ get_account_keys_cb (SoupSession *session,
     sign_in_async_data_free (data);
   }
 
-  g_object_unref (parser);
+  json_node_unref (node);
 }
 
 void
@@ -1263,7 +1259,7 @@ download_synchronizable_cb (SoupSession *session,
   EphySynchronizable *synchronizable;
   SyncCryptoKeyBundle *bundle;
   SyncAsyncData *data;
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *bso;
   GError *error = NULL;
   GType type;
@@ -1279,26 +1275,25 @@ download_synchronizable_cb (SoupSession *session,
     goto out;
   }
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  node = json_from_string (msg->response_body->data, &error);
   if (error) {
     g_warning ("Response is not a valid JSON");
     g_error_free (error);
-    goto free_parser;
+    goto free_node;
   }
-  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
     g_warning ("JSON root does not hold a JSON object");
-    goto free_parser;
+    goto free_node;
   }
 
-  bso = json_node_get_object (json_parser_get_root (parser));
+  bso = json_node_get_object (node);
   type = ephy_synchronizable_manager_get_synchronizable_type (data->manager);
   collection = ephy_synchronizable_manager_get_collection_name (data->manager);
   bundle = ephy_sync_service_get_key_bundle (self, collection);
   synchronizable = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (bso, type, bundle, &is_deleted));
   if (!synchronizable) {
     g_warning ("Failed to create synchronizable object from BSO");
-    goto free_parser;
+    goto free_node;
   }
 
   /* Delete the local object and add the remote one if it is not marked as deleted. */
@@ -1311,8 +1306,8 @@ download_synchronizable_cb (SoupSession *session,
   }
 
   g_object_unref (synchronizable);
-free_parser:
-  g_object_unref (parser);
+free_node:
+  json_node_unref (node);
 out:
   sync_async_data_free (data);
   ephy_sync_service_send_next_storage_request (self);
@@ -1421,9 +1416,8 @@ sync_collection_cb (SoupSession *session,
   SyncCollectionAsyncData *data;
   EphySynchronizable *remote;
   SyncCryptoKeyBundle *bundle;
-  JsonParser *parser = NULL;
+  JsonNode *node = NULL;
   JsonArray *array;
-  JsonNode *node;
   JsonObject *object;
   GError *error = NULL;
   GList *remotes_updated = NULL;
@@ -1450,29 +1444,27 @@ sync_collection_cb (SoupSession *session,
     goto out;
   }
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  node = json_from_string (msg->response_body->data, &error);
   if (error) {
     g_warning ("Response is not a valid JSON: %s", error->message);
     g_error_free (error);
-    goto free_parser;
+    goto free_node;
   }
-  if (!JSON_NODE_HOLDS_ARRAY (json_parser_get_root (parser))) {
+  if (!JSON_NODE_HOLDS_ARRAY (node)) {
     g_warning ("JSON root does not hold an array");
-    goto free_parser;
+    goto free_node;
   }
 
   type = ephy_synchronizable_manager_get_synchronizable_type (data->manager);
   bundle = ephy_sync_service_get_key_bundle (self, collection);
-  array = json_node_get_array (json_parser_get_root (parser));
+  array = json_node_get_array (node);
 
   for (guint i = 0; i < json_array_get_length (array); i++) {
-    node = json_array_get_element (array, i);
-    if (!JSON_NODE_HOLDS_OBJECT (node)) {
+    if (!JSON_NODE_HOLDS_OBJECT (json_array_get_element (array, i))) {
       g_warning ("Array member does not hold a JSON object, skipping...");
       continue;
     }
-    object = json_node_get_object (node);
+    object = json_node_get_object (json_array_get_element (array, i));
     remote = EPHY_SYNCHRONIZABLE (ephy_synchronizable_from_bso (object, type, bundle, &is_deleted));
     if (!remote) {
       g_warning ("Failed to create synchronizable object from BSO, skipping...");
@@ -1504,9 +1496,9 @@ merge_remotes:
   g_list_free_full (to_upload, g_object_unref);
   g_list_free_full (remotes_updated, g_object_unref);
   g_list_free_full (remotes_deleted, g_object_unref);
-free_parser:
-  if (parser)
-    g_object_unref (parser);
+free_node:
+  if (node)
+    json_node_unref (node);
 out:
   if (data->collection_index == data->num_collections)
     g_signal_emit (self, signals[SYNC_FINISHED], 0);

@@ -82,13 +82,12 @@ load_tokens_cb (SecretService *service,
   SecretItem *item;
   GHashTable *attributes;
   SecretValue *value = NULL;
-  JsonParser *parser = NULL;
+  JsonNode *node = NULL;
   JsonObject *json;
   GList *matches = NULL;
   GList *members = NULL;
   GError *error = NULL;
   GError *ret_error = NULL;
-  const char *tokens;
   const char *email;
   const char *user_email;
 
@@ -137,10 +136,7 @@ load_tokens_cb (SecretService *service,
     goto out;
   }
 
-  parser = json_parser_new ();
-  tokens = secret_value_get_text (value);
-  json_parser_load_from_data (parser, tokens, -1, &error);
-
+  node = json_from_string (secret_value_get_text (value), &error);
   if (error) {
     g_set_error (&ret_error,
                  SYNC_SECRET_ERROR,
@@ -150,7 +146,7 @@ load_tokens_cb (SecretService *service,
     goto out;
   }
 
-  json = json_node_get_object (json_parser_get_root (parser));
+  json = json_node_get_object (node);
   members = json_object_get_members (json);
 
   /* Set the tokens. */
@@ -166,16 +162,12 @@ out:
 
   if (error)
     g_error_free (error);
-
   if (ret_error)
     g_error_free (ret_error);
-
   if (value)
     secret_value_unref (value);
-
-  if (parser)
-    g_object_unref (parser);
-
+  if (node)
+    json_node_unref (node);
   g_list_free (members);
   g_list_free_full (matches, g_object_unref);
 }

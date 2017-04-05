@@ -884,8 +884,9 @@ char *
 ephy_sync_crypto_decrypt_record (const char          *payload,
                                  SyncCryptoKeyBundle *bundle)
 {
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *json;
+  GError *error = NULL;
   guint8 *aes_key;
   guint8 *hmac_key;
   guint8 *ciphertext;
@@ -901,21 +902,22 @@ ephy_sync_crypto_decrypt_record (const char          *payload,
   g_return_val_if_fail (bundle, NULL);
 
   /* Extract ciphertext, iv and hmac from payload. */
-  parser = json_parser_new ();
-  if (!json_parser_load_from_data (parser, payload, -1, NULL)) {
-    g_warning ("Payload is not a valid JSON");
-    goto free_parser;
+  node = json_from_string (payload, &error);
+  if (error) {
+    g_warning ("Payload is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
   }
-  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
     g_warning ("JSON node does not hold a JSON object");
-    goto free_parser;
+    goto free_node;
   }
-  json = json_node_get_object (json_parser_get_root (parser));
+  json = json_node_get_object (node);
   if (!json_object_has_member (json, "ciphertext") ||
       !json_object_has_member (json, "IV") ||
       !json_object_has_member (json, "hmac")) {
     g_warning ("JSON object has missing members");
-    goto free_parser;
+    goto free_node;
   }
   ciphertext_b64 = json_object_get_string_member (json, "ciphertext");
   iv_b64 = json_object_get_string_member (json, "IV");
@@ -926,7 +928,7 @@ ephy_sync_crypto_decrypt_record (const char          *payload,
   hmac_key = ephy_sync_crypto_decode_hex (bundle->hmac_key_hex);
   if (!aes_key || !hmac_key) {
     g_warning ("The key bundle does not hold valid keys");
-    goto free_keys;
+    goto free_node;
   }
 
   /* Under no circumstances should a client try to decrypt a record
@@ -946,9 +948,9 @@ ephy_sync_crypto_decrypt_record (const char          *payload,
 free_keys:
   g_free (aes_key);
   g_free (hmac_key);
-free_parser:
-  g_object_unref (parser);
-
+free_node:
+  json_node_unref (node);
+out:
   return cleartext;
 }
 

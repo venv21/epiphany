@@ -210,7 +210,7 @@ ephy_synchronizable_from_bso (JsonObject          *bso,
 {
   GObject *object = NULL;
   GError *error = NULL;
-  JsonParser *parser;
+  JsonNode *node;
   JsonObject *json;
   char *serialized;
   const char *payload;
@@ -235,18 +235,17 @@ ephy_synchronizable_from_bso (JsonObject          *bso,
     goto out;
   }
 
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, serialized, -1, &error);
+  node = json_from_string (serialized, &error);
   if (error) {
     g_warning ("Decrypted text is not a valid JSON: %s", error->message);
     g_error_free (error);
-    goto free_parser;
+    goto free_node;
   }
-  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
     g_warning ("JSON root does not hold a JSON object");
-    goto free_parser;
+    goto free_node;
   }
-  json = json_node_get_object (json_parser_get_root (parser));
+  json = json_node_get_object (node);
   if (json_object_has_member (json, "deleted")) {
     if (JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "deleted")))
       *is_deleted = json_object_get_boolean_member (json, "deleted");
@@ -258,14 +257,14 @@ ephy_synchronizable_from_bso (JsonObject          *bso,
   if (error) {
     g_warning ("Failed to create GObject from BSO: %s", error->message);
     g_error_free (error);
-    goto free_parser;
+    goto free_node;
   }
 
   ephy_synchronizable_set_modification_time (EPHY_SYNCHRONIZABLE (object), modified);
   ephy_synchronizable_set_is_uploaded (EPHY_SYNCHRONIZABLE (object), TRUE);
 
-free_parser:
-  g_object_unref (parser);
+free_node:
+  json_node_unref (node);
   g_free (serialized);
 out:
   return object;

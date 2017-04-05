@@ -303,18 +303,17 @@ sync_fxa_server_message_cb (WebKitUserContentManager *manager,
                             WebKitJavascriptResult   *result,
                             PrefsDialog              *dialog)
 {
-  JsonParser *parser;
-  JsonObject *object;
+  JsonNode *node;
+  JsonObject *json;
   JsonObject *detail;
   char *json_string;
   const char *type;
   const char *command;
 
   json_string = ephy_embed_utils_get_js_result_as_string (result);
-  parser = json_parser_new ();
-  json_parser_load_from_data (parser, json_string, -1, NULL);
-  object = json_node_get_object (json_parser_get_root (parser));
-  type = json_object_get_string_member (object, "type");
+  node = json_from_string (json_string, NULL);
+  json = json_node_get_object (node);
+  type = json_object_get_string_member (json, "type");
 
   /* The only message type we can receive is FirefoxAccountsCommand. */
   if (g_strcmp0 (type, "FirefoxAccountsCommand") != 0) {
@@ -322,7 +321,7 @@ sync_fxa_server_message_cb (WebKitUserContentManager *manager,
     goto out;
   }
 
-  detail = json_object_get_object_member (object, "detail");
+  detail = json_object_get_object_member (json, "detail");
   command = json_object_get_string_member (detail, "command");
 
   if (g_strcmp0 (command, "loaded") == 0) {
@@ -369,7 +368,7 @@ sync_fxa_server_message_cb (WebKitUserContentManager *manager,
 
 out:
   g_free (json_string);
-  g_object_unref (parser);
+  json_node_unref (node);
 }
 
 static void
