@@ -52,7 +52,6 @@ struct _EphySyncService {
 
   char        *user_email;
   double       sync_time;
-  gint64       auth_at;
 
   gboolean     locked;
   char        *storage_endpoint;
@@ -381,11 +380,12 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   JsonParser *parser;
   JsonObject *json;
   JsonObject *principal;
+  GError *error = NULL;
   SoupURI *uri;
   char **pieces;
   char *header;
   char *payload;
-  char *uid_email = NULL;
+  char *expected;
   const char *alg;
   const char *email;
   gsize len;
@@ -394,46 +394,73 @@ ephy_sync_service_certificate_is_valid (EphySyncService *self,
   g_assert (EPHY_IS_SYNC_SERVICE (self));
   g_assert (certificate);
 
-  /* Check if the certificate is something that we were expecting, i.e.
-   * if the algorithm and email fields match the expected values. */
-
   uri = soup_uri_new (MOZILLA_FXA_SERVER_URL);
   pieces = g_strsplit (certificate, ".", 0);
   header = (char *)ephy_sync_crypto_base64_urlsafe_decode (pieces[0], &len, TRUE);
   payload = (char *)ephy_sync_crypto_base64_urlsafe_decode (pieces[1], &len, TRUE);
-
   parser = json_parser_new ();
-  json_parser_load_from_data (parser, header, -1, NULL);
+
+  json_parser_load_from_data (parser, header, -1, &error);
+  if (error) {
+    g_warning ("Header is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto out;
+  }
   json = json_node_get_object (json_parser_get_root (parser));
+  if (!json_object_has_member (json, "alg") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "alg"))) {
+    g_warning ("JSON object has missing or invalid 'alg' member");
+    goto out;
+  }
   alg = json_object_get_string_member (json, "alg");
-
   if (g_strcmp0 (alg, "RS256")) {
-    g_warning ("Expected algorithm RS256, found %s. Giving up.", alg);
+    g_warning ("Expected algorithm RS256, found %s", alg);
     goto out;
   }
-
-  json_parser_load_from_data (parser, payload, -1, NULL);
+  json_parser_load_from_data (parser, payload, -1, &error);
+  if (error) {
+    g_warning ("Payload is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto out;
+  }
   json = json_node_get_object (json_parser_get_root (parser));
-  principal = json_object_get_object_member (json, "principal");
-  email = json_object_get_string_member (principal, "email");
-  uid_email = g_strdup_printf ("%s@%s",
-                               ephy_sync_service_get_token (self, TOKEN_UID),
-                               soup_uri_get_host (uri));
-
-  if (g_strcmp0 (uid_email, email)) {
-    g_warning ("Expected email %s, found %s. Giving up.", uid_email, email);
+  if (!json_object_has_member (json, "principal") ||
+      !JSON_NODE_HOLDS_OBJECT (json_object_get_member (json, "principal"))) {
+    g_warning ("JSON object has missing or invalid 'principal' member");
     goto out;
   }
+  principal = json_object_get_object_member (json, "principal");
+  if (!json_object_has_member (principal, "email") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (principal, "email"))) {
+    g_warning ("JSON object has misisng or invalid 'email' member");
+    goto out;
+  }
+  email = json_object_get_string_member (principal, "email");
+  expected = g_strdup_printf ("%s@%s",
+                              ephy_sync_service_get_token (self, TOKEN_UID),
+                              soup_uri_get_host (uri));
+  if (g_strcmp0 (email, expected)) {
+    g_warning ("Expected email %s, found %s", expected, email);
+    goto free_expected;
+  }
 
-  self->auth_at = json_object_get_int_member (json, "fxa-lastAuthAt");
   retval = TRUE;
 
+free_expected:
+  g_free (expected);
 out:
-  g_free (header);
-  g_free (payload);
-  g_free (uid_email);
-  g_strfreev (pieces);
   g_object_unref (parser);
+  g_free (payload);
+  g_free (header);
+  g_strfreev (pieces);
   soup_uri_free (uri);
 
   return retval;
@@ -447,28 +474,51 @@ obtain_storage_credentials_cb (SoupSession *session,
   EphySyncService *self;
   JsonNode *node;
   JsonObject *json;
-
-  self = ephy_shell_get_sync_service (ephy_shell_get_default ());
+  GError *error = NULL;
+  gboolean is_internal_error = TRUE;
 
   if (msg->status_code != 200) {
-    g_warning ("Failed to talk to the Token Server, status code %u. "
-               "See https://docs.services.mozilla.com/token/apis.html#error-responses",
-               msg->status_code);
-    self->locked = FALSE;
-    return;
+    g_warning ("Failed to get storage credentials from Token Server. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    goto out;
   }
 
-  node = json_from_string (msg->response_body->data, NULL);
+  node = json_from_string (msg->response_body->data, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_node;
+  }
   json = json_node_get_object (node);
+  if (!json_object_has_member (json, "api_endpoint") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "api_endpoint")) ||
+      !json_object_has_member (json, "id") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "id")) ||
+      !json_object_has_member (json, "key") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "key")) ||
+      !json_object_has_member (json, "duration") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "duration"))) {
+    g_warning ("JSON object has missing or invalid members");
+    goto free_node;
+  }
+
+  self = ephy_shell_get_sync_service (ephy_shell_get_default ());
   self->storage_endpoint = g_strdup (json_object_get_string_member (json, "api_endpoint"));
   self->storage_credentials_id = g_strdup (json_object_get_string_member (json, "id"));
   self->storage_credentials_key = g_strdup (json_object_get_string_member (json, "key"));
-  self->storage_credentials_expiry_time = json_object_get_int_member (json, "duration") +
-                                             ephy_sync_utils_current_time_seconds ();
-  self->locked = FALSE;
-  ephy_sync_service_send_next_storage_request (self);
+  self->storage_credentials_expiry_time = json_object_get_int_member (json, "duration") + ephy_sync_utils_current_time_seconds ();
+  is_internal_error = FALSE;
 
+free_node:
   json_node_unref (node);
+out:
+  self->locked = FALSE;
+  if (!is_internal_error)
+    ephy_sync_service_send_next_storage_request (self);
 }
 
 static void
@@ -489,8 +539,6 @@ ephy_sync_service_obtain_storage_credentials (EphySyncService *self)
   audience = ephy_sync_utils_make_audience (MOZILLA_TOKEN_SERVER_URL);
   assertion = ephy_sync_crypto_create_assertion (self->certificate, audience,
                                                  ASSERTION_DURATION, self->keypair);
-  g_assert (assertion);
-
   kB = ephy_sync_crypto_decode_hex (ephy_sync_service_get_token (self, TOKEN_KB));
   hashed_kB = g_compute_checksum_for_data (G_CHECKSUM_SHA256, kB, EPHY_SYNC_TOKEN_LENGTH);
   client_state = g_strndup (hashed_kB, EPHY_SYNC_TOKEN_LENGTH);
@@ -519,52 +567,78 @@ obtain_signed_certificate_cb (SoupSession *session,
   EphySyncService *self;
   JsonNode *node;
   JsonObject *json;
+  GError *error = NULL;
   const char *certificate;
+  const char *suggestion = NULL;
+  char *message = NULL;
+  gboolean is_internal_error = TRUE;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
-  node = json_from_string (msg->response_body->data, NULL);
-  json = json_node_get_object (node);
-
-  /* Since a new Firefox Account password implies new tokens, this will fail
-   * with an error code 110 (Invalid authentication token in request signature)
-   * if the user has changed his password since the last time he signed in.
-   * When this happens, notify the user to sign in with the new password. */
-  if (msg->status_code == 401 && json_object_get_int_member (json, "errno") == 110) {
-    char *error = g_strdup_printf (_("The password of your Firefox account %s "
-                                     "seems to have been changed."),
-                                   ephy_sync_service_get_user_email (self));
-    const char *suggestion = _("Please visit Preferences and sign in with "
-                               "the new password to continue the sync process.");
-
-    ephy_notification_show (ephy_notification_new (error, suggestion));
-
-    g_free (error);
-    self->locked = FALSE;
+  node = json_from_string (msg->response_body->data, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
     goto out;
   }
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_node;
+  }
+  json = json_node_get_object (node);
 
   if (msg->status_code != 200) {
-    g_warning ("FxA server errno: %ld, errmsg: %s",
-               json_object_get_int_member (json, "errno"),
-               json_object_get_string_member (json, "message"));
-    self->locked = FALSE;
-    goto out;
+    if (!json_object_has_member (json, "errno") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "errno"))) {
+      g_warning ("JSON object has missing or invalid 'errno' member");
+      goto free_node;
+    }
+
+    /* Since a new Firefox Account password implies new tokens, this will fail
+     * with an error code 110 (Invalid authentication token in request signature)
+     * if the user has changed his password since the last time he signed in.
+     * When this happens, notify the user to sign in with the new password. */
+    if (msg->status_code == 401 && json_object_get_int_member (json, "errno") == 110) {
+      message = g_strdup_printf (_("The password of your Firefox account %s seems to have been changed."),
+                                 ephy_sync_service_get_user_email (self));
+      suggestion = _("Please visit Preferences and sign in with the new password to continue syncing.");
+      goto free_node;
+    }
+
+    g_warning ("Failed to sign certificate. Status code: %u, response: %s",
+               msg->status_code, msg->response_body->data);
+    goto free_node;
+  }
+
+  if (!json_object_has_member (json, "cert") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "cert"))) {
+    g_warning ("JSON object has missing or invalid 'cert' member");
+    goto free_node;
   }
 
   certificate = json_object_get_string_member (json, "cert");
-
   if (!ephy_sync_service_certificate_is_valid (self, certificate)) {
+    g_warning ("Invalid certificate");
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
-    self->locked = FALSE;
-    goto out;
+    goto free_node;
   }
 
   self->certificate = g_strdup (certificate);
-  ephy_sync_service_obtain_storage_credentials (self);
+  is_internal_error = FALSE;
 
-out:
+free_node:
   json_node_unref (node);
+out:
+  if (is_internal_error) {
+    self->locked = FALSE;
+    ephy_notification_show (ephy_notification_new (message ? message
+                                                           : _("Something went wrong while syncing."),
+                                                   suggestion ? suggestion
+                                                              : _("Please visit Preferences and sign in again.")));
+    g_free (message);
+  } else {
+    ephy_sync_service_obtain_storage_credentials (self);
+  }
 }
 
 static void
@@ -581,12 +655,10 @@ ephy_sync_service_obtain_signed_certificate (EphySyncService *self)
 
   g_assert (EPHY_IS_SYNC_SERVICE (self));
 
-  /* Generate a new RSA key pair that is going to be used to sign the new certificate. */
+  /* Generate a new RSA key pair to sign the new certificate. */
   if (self->keypair)
     ephy_sync_crypto_rsa_key_pair_free (self->keypair);
-
   self->keypair = ephy_sync_crypto_generate_rsa_key_pair ();
-  g_assert (self->keypair);
 
   /* Derive tokenID, reqHMACkey and requestKey from the sessionToken. */
   ephy_sync_crypto_process_session_token (ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN),
@@ -945,8 +1017,7 @@ destroy_session_cb (SoupSession *session,
 }
 
 void
-ephy_sync_service_destroy_session (EphySyncService *self,
-                                   const char      *sessionToken)
+ephy_sync_service_destroy_session (EphySyncService *self)
 {
   SyncCryptoHawkOptions *hoptions;
   SyncCryptoHawkHeader *hheader;
@@ -957,21 +1028,14 @@ ephy_sync_service_destroy_session (EphySyncService *self,
   char *tokenID_hex;
   char *url;
   const char *content_type = "application/json";
-  const char *endpoint = "session/destroy";
   const char *request_body = "{}";
 
   g_return_if_fail (EPHY_IS_SYNC_SERVICE (self));
+  g_return_if_fail (ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN));
 
-  if (!sessionToken) {
-    sessionToken = ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN);
-    if (!sessionToken) {
-      g_warning ("Cannot destroy session: missing sessionToken");
-      return;
-    }
-  }
-
-  url = g_strdup_printf ("%s%s", MOZILLA_FXA_SERVER_URL, endpoint);
-  ephy_sync_crypto_process_session_token (sessionToken, &tokenID, &reqHMACkey, &requestKey);
+  url = g_strdup_printf ("%ssession/destroy", MOZILLA_FXA_SERVER_URL);
+  ephy_sync_crypto_process_session_token (ephy_sync_service_get_token (self, TOKEN_SESSIONTOKEN),
+                                          &tokenID, &reqHMACkey, &requestKey);
   tokenID_hex = ephy_sync_crypto_encode_hex (tokenID, 0);
 
   msg = soup_message_new (SOUP_METHOD_POST, url);
@@ -1004,7 +1068,7 @@ ephy_sync_service_report_sign_in_error (EphySyncService *self,
   g_assert (message);
 
   g_signal_emit (self, signals[SIGN_IN_ERROR], 0, message);
-  ephy_sync_service_destroy_session (self, NULL);
+  ephy_sync_service_destroy_session (self);
 
   if (clear_tokens) {
     ephy_sync_service_set_user_email (self, NULL);
@@ -1020,48 +1084,82 @@ check_storage_version_cb (SoupSession *session,
   EphySyncService *self;
   JsonParser *parser;
   JsonObject *json;
+  GError *error = NULL;
   char *payload;
-  char *message;
+  char *message = NULL;
   int storage_version;
+  gboolean is_internal_error = TRUE;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
 
   if (msg->status_code != 200) {
     g_warning ("Failed to check storage version. Status code: %u, response: %s",
                msg->status_code, msg->response_body->data);
-    ephy_sync_service_report_sign_in_error (self,
-                                            _("Something went wrong, please try again."),
-                                            TRUE);
     goto out;
   }
 
   parser = json_parser_new ();
-  json_parser_load_from_data (parser, msg->response_body->data, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-  payload = g_strdup (json_object_get_string_member (json, "payload"));
-  json_parser_load_from_data (parser, payload, -1, NULL);
-  json = json_node_get_object (json_parser_get_root (parser));
-  storage_version = json_object_get_int_member (json, "storageVersion");
-
-  /* If the storage version is correct, proceed to store the tokens.
-   * Otherwise, signal the error to the user. */
-  if (storage_version == STORAGE_VERSION) {
-    ephy_sync_secret_store_tokens (self);
-  } else {
-    LOG ("Unsupported storage version: %d", storage_version);
-    /* Translators: the %d is the storage version, the \n is a newline character. */
-    message = g_strdup_printf (_("Your Firefox Account uses a storage version "
-                                       "that Epiphany does not support, namely v%d.\n"
-                                       "Create a new account to use the latest storage version."),
-                                     storage_version);
-    ephy_sync_service_report_sign_in_error (self, message, TRUE);
-    g_free (message);
+  json_parser_load_from_data (parser, msg->response_body->data, -1, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_parser;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_parser;
   }
 
-  g_free (payload);
-  g_object_unref (parser);
+  json = json_node_get_object (json_parser_get_root (parser));
+  if (!json_object_has_member (json, "payload") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "payload"))) {
+    g_warning ("JSON object has missing or invalid 'payload' member");
+    goto free_parser;
+  }
+  payload = g_strdup (json_object_get_string_member (json, "payload"));
+  json_parser_load_from_data (parser, payload, -1, &error);
+  if (error) {
+    g_warning ("Payload is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_payload;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser))) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_payload;
+  }
+  json = json_node_get_object (json_parser_get_root (parser));
+  if (!json_object_has_member (json, "storageVersion") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "storageVersion"))) {
+    g_warning ("JSON object has missing or invalid 'storageVersion' member");
+    goto free_payload;
+  }
+  storage_version = json_object_get_int_member (json, "storageVersion");
+  if (storage_version != STORAGE_VERSION) {
+    LOG ("Unsupported storage version: %d", storage_version);
+    /* Translators: the %d is the storage version, the \n is a newline character. */
+    message = g_strdup_printf (_("Your Firefox Account uses storage version %d "
+                                 "which Epiphany does not support.\n"
+                                 "Create a new account to use the latest storage version."),
+                               storage_version);
+    goto free_payload;
+  }
 
+  /* Proceed to store tokens. */
+  ephy_sync_secret_store_tokens (self);
+  is_internal_error = FALSE;
+
+free_payload:
+  g_free (payload);
+free_parser:
+  g_object_unref (parser);
 out:
+  if (is_internal_error) {
+    ephy_sync_service_report_sign_in_error (self,
+                                            message ? message
+                                                    : _("Something went wrong, please try again."),
+                                            TRUE);
+    g_free (message);
+  }
   ephy_sync_service_send_next_storage_request (self);
 }
 
@@ -1091,9 +1189,15 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
 
   /* Derive the master sync keys form the key bundle. */
   unwrapKB = ephy_sync_crypto_decode_hex (data->unwrapBKey);
-  ephy_sync_crypto_compute_sync_keys (bundle, data->respHMACkey,
-                                      data->respXORkey, unwrapKB,
-                                      &kA, &kB);
+  if (!ephy_sync_crypto_compute_sync_keys (bundle, data->respHMACkey,
+                                           data->respXORkey, unwrapKB,
+                                           &kA, &kB)) {
+    ephy_sync_service_report_sign_in_error (self,
+                                            _("Failed to retrieve the Sync Key"),
+                                            FALSE);
+    goto out;
+  }
+
   kB_hex = ephy_sync_crypto_encode_hex (kB, 0);
 
   /* Save the email and the tokens. */
@@ -1104,9 +1208,10 @@ ephy_sync_service_conclude_sign_in (EphySyncService *self,
 
   ephy_sync_service_check_storage_version (self);
 
-  g_free (kA);
-  g_free (kB);
   g_free (kB_hex);
+  g_free (kB);
+  g_free (kA);
+out:
   g_free (unwrapKB);
   sign_in_async_data_free (data);
 }
@@ -1120,32 +1225,65 @@ get_account_keys_cb (SoupSession *session,
   SignInAsyncData *data;
   JsonNode *node;
   JsonObject *json;
+  GError *error = NULL;
+  gboolean is_internal_error = TRUE;
 
   self = ephy_shell_get_sync_service (ephy_shell_get_default ());
   data = (SignInAsyncData *)user_data;
-  node = json_from_string (msg->response_body->data, NULL);
+  node = json_from_string (msg->response_body->data, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto out;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_node;
+  }
   json = json_node_get_object (node);
 
-  if (msg->status_code == 200) {
-    /* Extract the master sync keys from the bundle and save tokens. */
-    ephy_sync_service_conclude_sign_in (self, data,
-                                        json_object_get_string_member (json, "bundle"));
-  } else if (msg->status_code == 400 && json_object_get_int_member (json, "errno") == 104) {
-    /* Poll the Firefox Accounts Server until the user verifies the account. */
-    LOG ("Account not verified, retrying...");
-    ephy_sync_service_fxa_hawk_get_async (self, "account/keys", data->tokenID_hex,
-                                          data->reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
-                                          get_account_keys_cb, data);
-  } else {
+  if (msg->status_code != 200) {
+    if (!json_object_has_member (json, "errno") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "errno"))) {
+      g_warning ("JSON objetc has invalid 'errno' member");
+      goto free_node;
+    }
+
+    /* If account in not verified, poll the Firefox Accounts Server until the
+     * verification has completed. */
+    if (json_object_get_int_member (json, "errno") == 104) {
+      LOG ("Account not verified, retrying...");
+      ephy_sync_service_fxa_hawk_get_async (self, "account/keys", data->tokenID_hex,
+                                            data->reqHMACkey, EPHY_SYNC_TOKEN_LENGTH,
+                                            get_account_keys_cb, data);
+      is_internal_error = FALSE;
+      goto free_node;
+    }
+
     g_warning ("Failed to GET /account/keys. Status code: %u, response: %s",
                msg->status_code, msg->response_body->data);
+    goto free_node;
+  }
+
+  if (!json_object_has_member (json, "bundle") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "bundle"))) {
+    g_warning ("JSON object has invalid or missing 'bundle' member");
+    goto free_node;
+  }
+  /* Extract the master sync keys from the bundle and save tokens. */
+  ephy_sync_service_conclude_sign_in (self, data,
+                                      json_object_get_string_member (json, "bundle"));
+  is_internal_error = FALSE;
+
+free_node:
+  json_node_unref (node);
+out:
+  if (is_internal_error) {
     ephy_sync_service_report_sign_in_error (self,
                                             _("Failed to retrieve the Sync Key"),
                                             FALSE);
     sign_in_async_data_free (data);
   }
-
-  json_node_unref (node);
 }
 
 void
@@ -1198,7 +1336,7 @@ ephy_sync_service_do_sign_out (EphySyncService *self)
 
   /* Destroy session and delete tokens. */
   ephy_sync_service_stop_periodical_sync (self);
-  ephy_sync_service_destroy_session (self, NULL);
+  ephy_sync_service_destroy_session (self);
   ephy_sync_service_clear_storage_credentials (self);
   ephy_sync_service_clear_tokens (self);
   ephy_sync_secret_forget_tokens ();
@@ -1526,7 +1664,7 @@ ephy_sync_service_sync_collection (EphySyncService           *self,
   is_initial = ephy_synchronizable_manager_is_initial_sync (manager);
   data = sync_collection_async_data_new (manager, is_initial, collection_index, num_collections);
 
-  LOG ("Syncing %s collection...", collection);
+  LOG ("Syncing %s collection%s...", collection, is_initial ? " first time" : "");
   ephy_sync_service_queue_storage_request (self, endpoint, SOUP_METHOD_GET, NULL,
                                            is_initial ? -1 : ephy_synchronizable_manager_get_sync_time (manager),
                                            -1, sync_collection_cb, data);

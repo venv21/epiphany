@@ -426,18 +426,12 @@ ephy_bookmark_synchronizable_to_bso (EphySynchronizable  *synchronizable,
 
   serialized = json_gobject_to_data (G_OBJECT (bookmark), NULL);
   payload = ephy_sync_crypto_encrypt_record (serialized, bundle);
-  if (!payload) {
-    g_warning ("Failed to encrypt bookmark");
-    goto free_serialized;
-  }
-
   bso = ephy_sync_utils_build_json_string (FALSE,
                                            "id", bookmark->id,
                                            "payload", payload,
                                            NULL);
 
   g_free (payload);
-free_serialized:
   g_free (serialized);
 
   return bso;

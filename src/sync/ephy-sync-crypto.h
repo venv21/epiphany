@@ -91,7 +91,7 @@ void                    ephy_sync_crypto_process_session_token    (const char   
                                                                    guint8                **tokenID,
                                                                    guint8                **reqHMACkey,
                                                                    guint8                **requestKey);
-void                    ephy_sync_crypto_compute_sync_keys        (const char             *bundle,
+gboolean                ephy_sync_crypto_compute_sync_keys        (const char             *bundle_hex,
                                                                    const guint8           *respHMACkey,
                                                                    const guint8           *respXORkey,
                                                                    const guint8           *unwrapBKey,

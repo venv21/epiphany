@@ -259,7 +259,7 @@ sync_tokens_store_finished_cb (EphySyncService *service,
     g_free (account);
   } else {
     /* Destroy the current session. */
-    ephy_sync_service_destroy_session (service, NULL);
+    ephy_sync_service_destroy_session (service);
 
     /* Unset the email and tokens. */
     ephy_sync_service_set_user_email (service, NULL);
@@ -306,69 +306,121 @@ sync_fxa_server_message_cb (WebKitUserContentManager *manager,
   JsonNode *node;
   JsonObject *json;
   JsonObject *detail;
+  JsonObject *data;
+  GError *error = NULL;
   char *json_string;
   const char *type;
   const char *command;
+  const char *email;
+  const char *uid;
+  const char *sessionToken;
+  const char *keyFetchToken;
+  const char *unwrapBKey;
+  gboolean verified;
+  gboolean is_internal_error = TRUE;
 
   json_string = ephy_embed_utils_get_js_result_as_string (result);
-  node = json_from_string (json_string, NULL);
-  json = json_node_get_object (node);
-  type = json_object_get_string_member (json, "type");
-
-  /* The only message type we can receive is FirefoxAccountsCommand. */
-  if (g_strcmp0 (type, "FirefoxAccountsCommand") != 0) {
-    g_warning ("Unknown command type: %s", type);
+  if (!json_string) {
+    g_warning ("Failed to get JavaScript result as string");
     goto out;
   }
-
+  node = json_from_string (json_string, &error);
+  if (error) {
+    g_warning ("Response is not a valid JSON: %s", error->message);
+    g_error_free (error);
+    goto free_string;
+  }
+  if (!JSON_NODE_HOLDS_OBJECT (node)) {
+    g_warning ("JSON node does not hold a JSON object");
+    goto free_node;
+  }
+  json = json_node_get_object (node);
+  if (!json_object_has_member (json, "type") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (json, "type"))) {
+    g_warning ("JSON object has invalid 'type' member");
+    goto free_node;
+  }
+  type = json_object_get_string_member (json, "type");
+  /* The only message type expected is FirefoxAccountsCommand. */
+  if (g_strcmp0 (type, "FirefoxAccountsCommand")) {
+    g_warning ("Unknown command type: %s", type);
+    goto free_node;
+  }
+  if (!json_object_has_member (json, "detail") ||
+      !JSON_NODE_HOLDS_OBJECT (json_object_get_member (json, "detail"))) {
+    g_warning ("JSON object has invalid 'detail' member");
+    goto free_node;
+  }
   detail = json_object_get_object_member (json, "detail");
-  command = json_object_get_string_member (detail, "command");
+  if (!json_object_has_member (detail, "command") ||
+      !JSON_NODE_HOLDS_VALUE (json_object_get_member (detail, "command"))) {
+    g_warning ("JSON object has invalid 'command' member");
+    goto free_node;
+  }
 
-  if (g_strcmp0 (command, "loaded") == 0) {
+  command = json_object_get_string_member (detail, "command");
+  if (!g_strcmp0 (command, "loaded")) {
     LOG ("Firefox Accounts iframe loaded");
-  } else if (g_strcmp0 (command, "can_link_account") == 0) {
+    is_internal_error = FALSE;
+  } else if (!g_strcmp0 (command, "can_link_account")) {
     /* We need to confirm a relink. */
     sync_send_data_to_fxa_server (dialog, "message", "can_link_account", "{'ok': true}");
-  } else if (g_strcmp0 (command, "login") == 0) {
-    JsonObject *data = json_object_get_object_member (detail, "data");
-    const char *email = json_object_get_string_member (data, "email");
-    const char *uid = json_object_get_string_member (data, "uid");
-    const char *sessionToken = json_object_get_string_member (data, "sessionToken");
-    const char *keyFetchToken = json_object_get_string_member (data, "keyFetchToken");
-    const char *unwrapBKey = json_object_get_string_member (data, "unwrapBKey");
+    is_internal_error = FALSE;
+  } else if (!g_strcmp0 (command, "login")) {
+    if (!json_object_has_member (detail, "data") ||
+        !JSON_NODE_HOLDS_OBJECT (json_object_get_member (detail, "data"))) {
+      g_warning ("JSON object has invalid 'data' member");
+      goto free_node;
+    }
 
     gtk_widget_set_visible (dialog->sync_firefox_iframe_label, FALSE);
     sync_send_data_to_fxa_server (dialog, "message", "login", NULL);
 
-    /* Cannot retrieve the sync keys without keyFetchToken or unwrapBKey. */
-    if (keyFetchToken == NULL || unwrapBKey == NULL) {
-      g_warning ("Ignoring login with keyFetchToken or unwrapBKey missing!"
-                 "Cannot retrieve sync keys with one of them missing.");
-
-      ephy_sync_service_destroy_session (dialog->sync_service, sessionToken);
-      sync_sign_in_details_show (dialog, _("Something went wrong, please try again."));
-      webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
-
-      goto out;
+    data = json_object_get_object_member (detail, "data");
+    if (!json_object_has_member (data, "uid") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "uid")) ||
+        !json_object_has_member (data, "email") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "email")) ||
+        !json_object_has_member (data, "sessionToken") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "sessionToken")) ||
+        !json_object_has_member (data, "keyFetchToken") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "keyFetchToken")) ||
+        !json_object_has_member (data, "unwrapBKey") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "unwrapBKey")) ||
+        !json_object_has_member (data, "verified") ||
+        !JSON_NODE_HOLDS_VALUE (json_object_get_member (data, "verified"))) {
+      g_warning ("JSON object has missing or invalid members");
+      goto free_node;
     }
 
-    if (json_object_get_boolean_member (data, "verified") == FALSE)
+    email = json_object_get_string_member (data, "email");
+    uid = json_object_get_string_member (data, "uid");
+    sessionToken = json_object_get_string_member (data, "sessionToken");
+    keyFetchToken = json_object_get_string_member (data, "keyFetchToken");
+    unwrapBKey = json_object_get_string_member (data, "unwrapBKey");
+    verified = json_object_get_boolean_member (data, "verified");
+
+    if (!verified) {
       sync_sign_in_details_show (dialog, _("Please don’t leave this page until "
                                            "you have completed the verification."));
+    }
 
     ephy_sync_service_do_sign_in (dialog->sync_service, email, uid,
                                   sessionToken, keyFetchToken, unwrapBKey);
-  } else if (g_strcmp0 (command, "session_status") == 0) {
-    /* We are not signed in at this time, which we signal by returning an error. */
-    sync_send_data_to_fxa_server (dialog, "message", "error", NULL);
-  } else if (g_strcmp0 (command, "sign_out") == 0) {
-    /* We are not signed in at this time. We should never get a sign out message! */
-    sync_send_data_to_fxa_server (dialog, "message", "error", NULL);
+    is_internal_error = FALSE;
+  } else {
+    g_warning ("Unexepected command: %s", command);
   }
 
-out:
-  g_free (json_string);
+free_node:
   json_node_unref (node);
+free_string:
+  g_free (json_string);
+out:
+  if (is_internal_error) {
+    sync_sign_in_details_show (dialog, _("Something went wrong, please try again."));
+    webkit_web_view_load_uri (dialog->fxa_web_view, FXA_IFRAME_URL);
+  }
 }
 
 static void

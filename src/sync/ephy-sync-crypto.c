@@ -772,60 +772,67 @@ ephy_sync_crypto_process_session_token (const char  *sessionToken,
   g_free (info);
 }
 
-void
-ephy_sync_crypto_compute_sync_keys (const char    *bundle,
+gboolean
+ephy_sync_crypto_compute_sync_keys (const char    *bundle_hex,
                                     const guint8  *respHMACkey,
                                     const guint8  *respXORkey,
                                     const guint8  *unwrapBKey,
                                     guint8       **kA,
                                     guint8       **kB)
 {
-  guint8 *bdl;
+  guint8 *bundle;
   guint8 *ciphertext;
   guint8 *respMAC;
   guint8 *respMAC2;
   guint8 *xored;
   guint8 *wrapKB;
   char *respMAC2_hex;
+  gboolean retval = TRUE;
 
-  g_return_if_fail (bundle);
-  g_return_if_fail (respHMACkey);
-  g_return_if_fail (respXORkey);
-  g_return_if_fail (unwrapBKey);
-  g_return_if_fail (kA);
-  g_return_if_fail (kB);
+  g_return_val_if_fail (bundle_hex, FALSE);
+  g_return_val_if_fail (respHMACkey, FALSE);
+  g_return_val_if_fail (respXORkey, FALSE);
+  g_return_val_if_fail (unwrapBKey, FALSE);
+  g_return_val_if_fail (kA, FALSE);
+  g_return_val_if_fail (kB, FALSE);
 
-  bdl = ephy_sync_crypto_decode_hex (bundle);
+  bundle = ephy_sync_crypto_decode_hex (bundle_hex);
   ciphertext = g_malloc (2 * EPHY_SYNC_TOKEN_LENGTH);
   respMAC = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  wrapKB = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  *kA = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
 
   /* Compute the MAC and compare it to the expected value. */
-  memcpy (ciphertext, bdl, 2 * EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (respMAC, bdl + 2 * EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (ciphertext, bundle, 2 * EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (respMAC, bundle + 2 * EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
   respMAC2_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
                                           respHMACkey, EPHY_SYNC_TOKEN_LENGTH,
                                           ciphertext, 2 * EPHY_SYNC_TOKEN_LENGTH);
   respMAC2 = ephy_sync_crypto_decode_hex (respMAC2_hex);
-  g_assert (ephy_sync_crypto_equals (respMAC, respMAC2, EPHY_SYNC_TOKEN_LENGTH));
+  if (!ephy_sync_crypto_equals (respMAC, respMAC2, EPHY_SYNC_TOKEN_LENGTH)) {
+    g_warning ("HMAC values differs from the one expected");
+    retval = FALSE;
+    goto out;
+  }
 
   /* XOR the extracted ciphertext with the respXORkey, then split in into the
    * separate kA and wrap(kB) values. */
   xored = ephy_sync_crypto_xor (ciphertext, respXORkey, 2 * EPHY_SYNC_TOKEN_LENGTH);
+  *kA = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
   memcpy (*kA, xored, EPHY_SYNC_TOKEN_LENGTH);
+  wrapKB = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
   memcpy (wrapKB, xored + EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
-
   /* Finally, XOR wrap(kB) with unwrapBKey to obtain kB. There is no MAC on wrap(kB). */
   *kB = ephy_sync_crypto_xor (unwrapBKey, wrapKB, EPHY_SYNC_TOKEN_LENGTH);
 
-  g_free (bdl);
-  g_free (ciphertext);
-  g_free (respMAC);
-  g_free (respMAC2);
-  g_free (xored);
   g_free (wrapKB);
+  g_free (xored);
+out:
+  g_free (respMAC2);
   g_free (respMAC2_hex);
+  g_free (respMAC);
+  g_free (ciphertext);
+  g_free (bundle);
+
+  return retval;
 }
 
 SyncCryptoKeyBundle *
@@ -926,10 +933,6 @@ ephy_sync_crypto_decrypt_record (const char          *payload,
   /* Get the encryption key and the HMAC key. */
   aes_key = ephy_sync_crypto_decode_hex (bundle->aes_key_hex);
   hmac_key = ephy_sync_crypto_decode_hex (bundle->hmac_key_hex);
-  if (!aes_key || !hmac_key) {
-    g_warning ("The key bundle does not hold valid keys");
-    goto free_node;
-  }
 
   /* Under no circumstances should a client try to decrypt a record
    * if the HMAC verification fails. */
@@ -958,7 +961,7 @@ char *
 ephy_sync_crypto_encrypt_record (const char          *cleartext,
                                  SyncCryptoKeyBundle *bundle)
 {
-  char *payload = NULL;
+  char *payload;
   char *iv_b64;
   char *ciphertext_b64;
   char *hmac;
@@ -974,10 +977,6 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
   /* Get the encryption key and the HMAC key. */
   aes_key = ephy_sync_crypto_decode_hex (bundle->aes_key_hex);
   hmac_key = ephy_sync_crypto_decode_hex (bundle->hmac_key_hex);
-  if (!aes_key || !hmac_key) {
-    g_warning ("The key bundle does not hold valid keys");
-    goto free_keys;
-  }
 
   /* Generate a random 16 bytes initialization vector. */
   iv = g_malloc (IV_LEN);
@@ -1003,7 +1002,6 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
   g_free (ciphertext_b64);
   g_free (ciphertext);
   g_free (iv);
-free_keys:
   g_free (aes_key);
   g_free (hmac_key);
 
@@ -1136,7 +1134,7 @@ ephy_sync_crypto_generate_rsa_key_pair (void)
 {
   struct rsa_public_key public;
   struct rsa_private_key private;
-  int retval;
+  int success;
 
   rsa_public_key_init (&public);
   rsa_private_key_init (&private);
@@ -1145,15 +1143,11 @@ ephy_sync_crypto_generate_rsa_key_pair (void)
   mpz_set_ui (public.e, 65537);
 
   /* Key sizes below 2048 are considered breakable and should not be used. */
-  retval = rsa_generate_keypair (&public, &private,
-                                 NULL, ephy_sync_crypto_random_bytes_gen,
-                                 NULL, NULL, 2048, 0);
-  if (retval == 0) {
-    g_warning ("Failed to generate RSA key pair");
-    rsa_public_key_clear (&public);
-    rsa_private_key_clear (&private);
-    return NULL;
-  }
+  success = rsa_generate_keypair (&public, &private,
+                                  NULL, ephy_sync_crypto_random_bytes_gen,
+                                  NULL, NULL, 2048, 0);
+  /* Given correct parameters, this never fails. */
+  g_assert (success);
 
   return ephy_sync_crypto_rsa_key_pair_new (public, private);
 }
@@ -1170,14 +1164,15 @@ ephy_sync_crypto_create_assertion (const char           *certificate,
   char *body_b64;
   char *header_b64;
   char *to_sign;
-  char *sig_b64 = NULL;
-  char *assertion = NULL;
+  char *sig_b64;
+  char *assertion;
   char *digest_hex;
   guint8 *digest;
-  guint8 *sig = NULL;
+  guint8 *sig;
   guint64 expires_at;
   gsize expected_size;
   gsize count;
+  int success;
 
   g_return_val_if_fail (certificate, NULL);
   g_return_val_if_fail (audience, NULL);
@@ -1196,27 +1191,22 @@ ephy_sync_crypto_create_assertion (const char           *certificate,
 
   /* Use the provided key pair to RSA sign the message. */
   mpz_init (signature);
-  if (rsa_sha256_sign_digest_tr (&keypair->public, &keypair->private,
-                                 NULL, ephy_sync_crypto_random_bytes_gen,
-                                 digest, signature) == 0) {
-    g_warning ("Failed to sign the message. Giving up.");
-    goto out;
-  }
+  success = rsa_sha256_sign_digest_tr (&keypair->public, &keypair->private,
+                                       NULL, ephy_sync_crypto_random_bytes_gen,
+                                       digest, signature);
+  /* Given correct parameters, this never fails. */
+  g_assert (success);
 
   expected_size = (mpz_sizeinbase (signature, 2) + 7) / 8;
   sig = g_malloc (expected_size);
   mpz_export (sig, &count, 1, sizeof (guint8), 0, 0, signature);
-
-  if (count != expected_size) {
-    g_warning ("Expected %lu bytes, got %lu. Giving up.", count, expected_size);
-    goto out;
-  }
+  /* Given correct parameters, this never fails. */
+  g_assert (count == expected_size);
 
   /* Finally, join certificate, header, body and signed message to create the assertion. */
   sig_b64 = ephy_sync_crypto_base64_urlsafe_encode (sig, count, TRUE);
   assertion = g_strdup_printf ("%s~%s.%s.%s", certificate, header_b64, body_b64, sig_b64);
 
-out:
   g_free (body);
   g_free (body_b64);
   g_free (header_b64);
@@ -1316,14 +1306,12 @@ guint8 *
 ephy_sync_crypto_decode_hex (const char *hex)
 {
   guint8 *retval;
-  gsize hex_len = strlen (hex);
 
   g_return_val_if_fail (hex, NULL);
-  g_return_val_if_fail (hex_len % 2 == 0, NULL);
 
-  retval = g_malloc (hex_len / 2);
-  for (gsize i = 0, j = 0; i < hex_len; i += 2, j++)
-    sscanf(hex + i, "%2hhx", retval + j);
+  retval = g_malloc (strlen (hex) / 2);
+  for (gsize i = 0, j = 0; i < strlen (hex); i += 2, j++)
+    sscanf (hex + i, "%2hhx", retval + j);
 
   return retval;
 }

@@ -47,8 +47,7 @@ SyncCryptoKeyBundle *ephy_sync_service_get_key_bundle             (EphySyncServi
                                                                    const char                *collection);
 void                 ephy_sync_service_clear_storage_credentials  (EphySyncService           *self);
 void                 ephy_sync_service_clear_tokens               (EphySyncService           *self);
-void                 ephy_sync_service_destroy_session            (EphySyncService           *self,
-                                                                   const char                *sessionToken);
+void                 ephy_sync_service_destroy_session            (EphySyncService           *self);
 void                 ephy_sync_service_do_sign_in                 (EphySyncService           *self,
                                                                    const char                *email,
                                                                    const char                *uid,
