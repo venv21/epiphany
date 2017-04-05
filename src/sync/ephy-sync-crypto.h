@@ -26,8 +26,6 @@
 
 G_BEGIN_DECLS
 
-#define EPHY_SYNC_TOKEN_LENGTH 32
-
 typedef struct {
   char *app;
   char *dlg;
@@ -86,17 +84,20 @@ void                    ephy_sync_crypto_process_key_fetch_token  (const char   
                                                                    guint8                **tokenID,
                                                                    guint8                **reqHMACkey,
                                                                    guint8                **respHMACkey,
-                                                                   guint8                **respXORkey);
+                                                                   guint8                **respXORkey,
+                                                                   gsize                   token_len);
 void                    ephy_sync_crypto_process_session_token    (const char             *sessionToken,
                                                                    guint8                **tokenID,
                                                                    guint8                **reqHMACkey,
-                                                                   guint8                **requestKey);
+                                                                   guint8                **requestKey,
+                                                                   gsize                   token_len);
 gboolean                ephy_sync_crypto_compute_sync_keys        (const char             *bundle_hex,
                                                                    const guint8           *respHMACkey,
                                                                    const guint8           *respXORkey,
                                                                    const guint8           *unwrapBKey,
                                                                    guint8                **kA,
-                                                                   guint8                **kB);
+                                                                   guint8                **kB,
+                                                                   gsize                   key_len);
 SyncCryptoKeyBundle    *ephy_sync_crypto_derive_key_bundle        (const guint8           *key,
                                                                    gsize                   key_len);
 char                   *ephy_sync_crypto_decrypt_record           (const char             *payload,

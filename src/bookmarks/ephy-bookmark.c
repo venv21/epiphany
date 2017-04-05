@@ -24,7 +24,6 @@
 
 #include "ephy-shell.h"
 #include "ephy-sync-crypto.h"
-#include "ephy-sync-utils.h"
 #include "ephy-synchronizable.h"
 
 #include <string.h>
@@ -420,17 +419,23 @@ ephy_bookmark_synchronizable_to_bso (EphySynchronizable  *synchronizable,
                                      SyncCryptoKeyBundle *bundle)
 {
   EphyBookmark *bookmark = EPHY_BOOKMARK (synchronizable);
-  char *bso = NULL;
+  JsonNode *node;
+  JsonObject *object;
+  char *bso;
   char *serialized;
   char *payload;
 
   serialized = json_gobject_to_data (G_OBJECT (bookmark), NULL);
   payload = ephy_sync_crypto_encrypt_record (serialized, bundle);
-  bso = ephy_sync_utils_build_json_string (FALSE,
-                                           "id", bookmark->id,
-                                           "payload", payload,
-                                           NULL);
+  node = json_node_new (JSON_NODE_OBJECT);
+  object = json_object_new ();
+  json_object_set_string_member (object, "id", bookmark->id);
+  json_object_set_string_member (object, "payload", payload);
+  json_node_set_object (node, object);
+  bso = json_to_string (node, FALSE);
 
+  json_object_unref (object);
+  json_node_unref (node);
   g_free (payload);
   g_free (serialized);
 

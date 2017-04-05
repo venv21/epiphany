@@ -79,8 +79,6 @@ libephymain_la_SOURCES = \
 	sync/ephy-sync-secret.h			\
 	sync/ephy-sync-service.c		\
 	sync/ephy-sync-service.h		\
-	sync/ephy-sync-utils.c			\
-	sync/ephy-sync-utils.h			\
 	sync/ephy-synchronizable.c		\
 	sync/ephy-synchronizable.h		\
 	sync/ephy-synchronizable-manager.c	\

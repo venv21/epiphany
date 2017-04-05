@@ -21,13 +21,18 @@
 #pragma once
 
 #include "ephy-sync-crypto.h"
-#include "ephy-sync-utils.h"
 #include "ephy-synchronizable-manager.h"
 
 #include <glib-object.h>
 #include <libsoup/soup.h>
 
 G_BEGIN_DECLS
+
+typedef enum {
+  TOKEN_UID,
+  TOKEN_SESSIONTOKEN,
+  TOKEN_KB
+} EphySyncTokenType;
 
 #define EPHY_TYPE_SYNC_SERVICE (ephy_sync_service_get_type ())
 
@@ -43,6 +48,8 @@ const char          *ephy_sync_service_get_token                  (EphySyncServi
 void                 ephy_sync_service_set_token                  (EphySyncService           *self,
                                                                    const char                *value,
                                                                    EphySyncTokenType          type);
+const char          *ephy_sync_service_token_name_from_type       (EphySyncTokenType          type);
+EphySyncTokenType    ephy_sync_service_token_type_from_name       (const char                *name);
 SyncCryptoKeyBundle *ephy_sync_service_get_key_bundle             (EphySyncService           *self,
                                                                    const char                *collection);
 void                 ephy_sync_service_clear_storage_credentials  (EphySyncService           *self);

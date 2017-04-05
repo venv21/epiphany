@@ -153,7 +153,7 @@ load_tokens_cb (SecretService *service,
   for (GList *m = members; m != NULL; m = m->next) {
     ephy_sync_service_set_token (sync_service,
                                  json_object_get_string_member (json, m->data),
-                                 ephy_sync_utils_token_type_from_name (m->data));
+                                 ephy_sync_service_token_type_from_name (m->data));
   }
 
 out:
@@ -205,19 +205,26 @@ store_tokens_cb (SecretService *service,
 void
 ephy_sync_secret_store_tokens (EphySyncService *service)
 {
+  JsonNode *node;
+  JsonObject *object;
   SecretValue *value;
   GHashTable *attributes;
   char *tokens;
   char *label;
 
-  tokens = ephy_sync_utils_build_json_string (FALSE,
-                                              ephy_sync_utils_token_name_from_type (TOKEN_UID),
-                                              ephy_sync_service_get_token (service, TOKEN_UID),
-                                              ephy_sync_utils_token_name_from_type (TOKEN_SESSIONTOKEN),
-                                              ephy_sync_service_get_token (service, TOKEN_SESSIONTOKEN),
-                                              ephy_sync_utils_token_name_from_type (TOKEN_KB),
-                                              ephy_sync_service_get_token (service, TOKEN_KB),
-                                              NULL);
+  node = json_node_new (JSON_NODE_OBJECT);
+  object = json_object_new ();
+  json_object_set_string_member (object,
+                                 ephy_sync_service_token_name_from_type (TOKEN_UID),
+                                 ephy_sync_service_get_token (service, TOKEN_UID));
+  json_object_set_string_member (object,
+                                 ephy_sync_service_token_name_from_type (TOKEN_SESSIONTOKEN),
+                                 ephy_sync_service_get_token (service, TOKEN_SESSIONTOKEN));
+  json_object_set_string_member (object,
+                                 ephy_sync_service_token_name_from_type (TOKEN_KB),
+                                 ephy_sync_service_get_token (service, TOKEN_KB));
+  json_node_set_object (node, object);
+  tokens = json_to_string (node, FALSE);
   value = secret_value_new (tokens, -1, "text/plain");
   attributes = secret_attributes_build (EPHY_SYNC_TOKEN_SCHEMA, EMAIL_KEY,
                                         ephy_sync_service_get_user_email (service),
@@ -230,8 +237,10 @@ ephy_sync_secret_store_tokens (EphySyncService *service)
                         NULL, label, value, NULL,
                         (GAsyncReadyCallback)store_tokens_cb, service);
 
-  g_free (tokens);
   g_free (label);
-  secret_value_unref (value);
   g_hash_table_unref (attributes);
+  secret_value_unref (value);
+  g_free (tokens);
+  json_object_unref (object);
+  json_node_unref (node);
 }

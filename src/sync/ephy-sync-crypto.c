@@ -21,8 +21,6 @@
 #include "config.h"
 #include "ephy-sync-crypto.h"
 
-#include "ephy-sync-utils.h"
-
 #include <glib/gstdio.h>
 #include <inttypes.h>
 #include <libsoup/soup.h>
@@ -206,8 +204,8 @@ ephy_sync_crypto_key_bundle_from_array (JsonArray *array)
 
   aes_key = g_base64_decode (json_array_get_string_element (array, 0), &len);
   hmac_key = g_base64_decode (json_array_get_string_element (array, 1), &len);
-  aes_key_hex = ephy_sync_crypto_encode_hex (aes_key, 0);
-  hmac_key_hex = ephy_sync_crypto_encode_hex (hmac_key, 0);
+  aes_key_hex = ephy_sync_crypto_encode_hex (aes_key, 32);
+  hmac_key_hex = ephy_sync_crypto_encode_hex (hmac_key, 32);
   bundle = ephy_sync_crypto_key_bundle_new (aes_key_hex, hmac_key_hex);
 
   g_free (aes_key);
@@ -273,6 +271,43 @@ ephy_sync_crypto_equals (const guint8 *a,
 }
 
 static char *
+ephy_sync_crypto_find_and_replace (const char *where,
+                                   const char *to_find,
+                                   const char *to_repl)
+{
+  const char *haystack = where;
+  const char *needle = NULL;
+  char *out;
+  gsize haystack_len;
+  gsize to_find_len;
+  gsize to_repl_len;
+  gsize new_len = 0;
+  gsize skip_len = 0;
+
+  g_assert (where);
+  g_assert (to_find);
+  g_assert (to_repl);
+
+  haystack_len = strlen (where);
+  to_find_len = strlen (to_find);
+  to_repl_len = strlen (to_repl);
+  out = g_malloc (haystack_len + 1);
+
+  while ((needle = g_strstr_len (haystack, -1, to_find)) != NULL) {
+    haystack_len += to_find_len - to_repl_len;
+    out = g_realloc (out, haystack_len + 1);
+    skip_len = needle - haystack;
+    memcpy (out + new_len, haystack, skip_len);
+    memcpy (out + new_len + skip_len, to_repl, to_repl_len);
+    new_len += skip_len + to_repl_len;
+    haystack = needle + to_find_len;
+  }
+  strcpy (out + new_len, haystack);
+
+  return out;
+}
+
+static char *
 ephy_sync_crypto_normalize_string (const char              *type,
                                    SyncCryptoHawkArtifacts *artifacts)
 {
@@ -297,8 +332,8 @@ ephy_sync_crypto_normalize_string (const char              *type,
                           NULL);
 
   if (artifacts->ext && strlen (artifacts->ext) > 0) {
-    tmp = ephy_sync_utils_find_and_replace (artifacts->ext, "\\", "\\\\");
-    n_ext = ephy_sync_utils_find_and_replace (tmp, "\n", "\\n");
+    tmp = ephy_sync_crypto_find_and_replace (artifacts->ext, "\\", "\\\\");
+    n_ext = ephy_sync_crypto_find_and_replace (tmp, "\n", "\\n");
     g_free (tmp);
   }
 
@@ -682,7 +717,8 @@ ephy_sync_crypto_process_key_fetch_token (const char  *keyFetchToken,
                                           guint8     **tokenID,
                                           guint8     **reqHMACkey,
                                           guint8     **respHMACkey,
-                                          guint8     **respXORkey)
+                                          guint8     **respXORkey,
+                                          gsize        token_len)
 {
   guint8 *kft;
   guint8 *out1;
@@ -700,32 +736,32 @@ ephy_sync_crypto_process_key_fetch_token (const char  *keyFetchToken,
   kft = ephy_sync_crypto_decode_hex (keyFetchToken);
   info_kft = ephy_sync_crypto_kw ("keyFetchToken");
   info_keys = ephy_sync_crypto_kw ("account/keys");
-  out1 = g_malloc (3 * EPHY_SYNC_TOKEN_LENGTH);
-  out2 = g_malloc (3 * EPHY_SYNC_TOKEN_LENGTH);
+  out1 = g_malloc (3 * token_len);
+  out2 = g_malloc (3 * token_len);
 
   /* Use the keyFetchToken to derive tokenID, reqHMACkey and keyRequestKey. */
-  ephy_sync_crypto_hkdf (kft, EPHY_SYNC_TOKEN_LENGTH,
+  ephy_sync_crypto_hkdf (kft, token_len,
                          NULL, 0,
                          (guint8 *)info_kft, strlen (info_kft),
-                         out1, 3 * EPHY_SYNC_TOKEN_LENGTH);
+                         out1, 3 * token_len);
 
-  *tokenID = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  *reqHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  keyRequestKey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*tokenID, out1, EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*reqHMACkey, out1 + EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (keyRequestKey, out1 + 2 * EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
+  *tokenID = g_malloc (token_len);
+  *reqHMACkey = g_malloc (token_len);
+  keyRequestKey = g_malloc (token_len);
+  memcpy (*tokenID, out1, token_len);
+  memcpy (*reqHMACkey, out1 + token_len, token_len);
+  memcpy (keyRequestKey, out1 + 2 * token_len, token_len);
 
   /* Use the keyRequestKey to derive respHMACkey and respXORkey. */
-  ephy_sync_crypto_hkdf (keyRequestKey, EPHY_SYNC_TOKEN_LENGTH,
+  ephy_sync_crypto_hkdf (keyRequestKey, token_len,
                          NULL, 0,
                          (guint8 *)info_keys, strlen (info_keys),
-                         out2, 3 * EPHY_SYNC_TOKEN_LENGTH);
+                         out2, 3 * token_len);
 
-  *respHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  *respXORkey = g_malloc (2 * EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*respHMACkey, out2, EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*respXORkey, out2 + EPHY_SYNC_TOKEN_LENGTH, 2 * EPHY_SYNC_TOKEN_LENGTH);
+  *respHMACkey = g_malloc (token_len);
+  *respXORkey = g_malloc (2 * token_len);
+  memcpy (*respHMACkey, out2, token_len);
+  memcpy (*respXORkey, out2 + token_len, 2 * token_len);
 
   g_free (kft);
   g_free (out1);
@@ -739,7 +775,8 @@ void
 ephy_sync_crypto_process_session_token (const char  *sessionToken,
                                         guint8     **tokenID,
                                         guint8     **reqHMACkey,
-                                        guint8     **requestKey)
+                                        guint8     **requestKey,
+                                        gsize        token_len)
 {
   guint8 *st;
   guint8 *out;
@@ -752,20 +789,20 @@ ephy_sync_crypto_process_session_token (const char  *sessionToken,
 
   st = ephy_sync_crypto_decode_hex (sessionToken);
   info = ephy_sync_crypto_kw ("sessionToken");
-  out = g_malloc (3 * EPHY_SYNC_TOKEN_LENGTH);
+  out = g_malloc (3 * token_len);
 
   /* Use the sessionToken to derive tokenID, reqHMACkey and requestKey. */
-  ephy_sync_crypto_hkdf (st, EPHY_SYNC_TOKEN_LENGTH,
+  ephy_sync_crypto_hkdf (st, token_len,
                          NULL, 0,
                          (guint8 *)info, strlen (info),
-                         out, 3 * EPHY_SYNC_TOKEN_LENGTH);
+                         out, 3 * token_len);
 
-  *tokenID = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  *reqHMACkey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  *requestKey = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*tokenID, out, EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*reqHMACkey, out + EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*requestKey, out + 2 * EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
+  *tokenID = g_malloc (token_len);
+  *reqHMACkey = g_malloc (token_len);
+  *requestKey = g_malloc (token_len);
+  memcpy (*tokenID, out, token_len);
+  memcpy (*reqHMACkey, out + token_len, token_len);
+  memcpy (*requestKey, out + 2 * token_len, token_len);
 
   g_free (st);
   g_free (out);
@@ -778,7 +815,8 @@ ephy_sync_crypto_compute_sync_keys (const char    *bundle_hex,
                                     const guint8  *respXORkey,
                                     const guint8  *unwrapBKey,
                                     guint8       **kA,
-                                    guint8       **kB)
+                                    guint8       **kB,
+                                    gsize          key_len)
 {
   guint8 *bundle;
   guint8 *ciphertext;
@@ -797,17 +835,17 @@ ephy_sync_crypto_compute_sync_keys (const char    *bundle_hex,
   g_return_val_if_fail (kB, FALSE);
 
   bundle = ephy_sync_crypto_decode_hex (bundle_hex);
-  ciphertext = g_malloc (2 * EPHY_SYNC_TOKEN_LENGTH);
-  respMAC = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
+  ciphertext = g_malloc (2 * key_len);
+  respMAC = g_malloc (key_len);
 
   /* Compute the MAC and compare it to the expected value. */
-  memcpy (ciphertext, bundle, 2 * EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (respMAC, bundle + 2 * EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
+  memcpy (ciphertext, bundle, 2 * key_len);
+  memcpy (respMAC, bundle + 2 * key_len, key_len);
   respMAC2_hex = g_compute_hmac_for_data (G_CHECKSUM_SHA256,
-                                          respHMACkey, EPHY_SYNC_TOKEN_LENGTH,
-                                          ciphertext, 2 * EPHY_SYNC_TOKEN_LENGTH);
+                                          respHMACkey, key_len,
+                                          ciphertext, 2 * key_len);
   respMAC2 = ephy_sync_crypto_decode_hex (respMAC2_hex);
-  if (!ephy_sync_crypto_equals (respMAC, respMAC2, EPHY_SYNC_TOKEN_LENGTH)) {
+  if (!ephy_sync_crypto_equals (respMAC, respMAC2, key_len)) {
     g_warning ("HMAC values differs from the one expected");
     retval = FALSE;
     goto out;
@@ -815,13 +853,13 @@ ephy_sync_crypto_compute_sync_keys (const char    *bundle_hex,
 
   /* XOR the extracted ciphertext with the respXORkey, then split in into the
    * separate kA and wrap(kB) values. */
-  xored = ephy_sync_crypto_xor (ciphertext, respXORkey, 2 * EPHY_SYNC_TOKEN_LENGTH);
-  *kA = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (*kA, xored, EPHY_SYNC_TOKEN_LENGTH);
-  wrapKB = g_malloc (EPHY_SYNC_TOKEN_LENGTH);
-  memcpy (wrapKB, xored + EPHY_SYNC_TOKEN_LENGTH, EPHY_SYNC_TOKEN_LENGTH);
+  xored = ephy_sync_crypto_xor (ciphertext, respXORkey, 2 * key_len);
+  *kA = g_malloc (key_len);
+  memcpy (*kA, xored, key_len);
+  wrapKB = g_malloc (key_len);
+  memcpy (wrapKB, xored + key_len, key_len);
   /* Finally, XOR wrap(kB) with unwrapBKey to obtain kB. There is no MAC on wrap(kB). */
-  *kB = ephy_sync_crypto_xor (unwrapBKey, wrapKB, EPHY_SYNC_TOKEN_LENGTH);
+  *kB = ephy_sync_crypto_xor (unwrapBKey, wrapKB, key_len);
 
   g_free (wrapKB);
   g_free (xored);
@@ -961,6 +999,8 @@ char *
 ephy_sync_crypto_encrypt_record (const char          *cleartext,
                                  SyncCryptoKeyBundle *bundle)
 {
+  JsonNode *node;
+  JsonObject *object;
   char *payload;
   char *iv_b64;
   char *ciphertext_b64;
@@ -989,14 +1029,16 @@ ephy_sync_crypto_encrypt_record (const char          *cleartext,
   /* SHA256 expects a 32 bytes key. */
   hmac = g_compute_hmac_for_string (G_CHECKSUM_SHA256, hmac_key, 32, ciphertext_b64, -1);
 
-  /* Wrap everything up into a JSON string. Since this is going to be part of
-   * another JSON string, the double quotes need to be escaped. */
-  payload = ephy_sync_utils_build_json_string (TRUE,
-                                               "ciphertext", ciphertext_b64,
-                                               "IV", iv_b64,
-                                               "hmac", hmac,
-                                               NULL);
+  node = json_node_new (JSON_NODE_OBJECT);
+  object = json_object_new ();
+  json_object_set_string_member (object, "ciphertext", ciphertext_b64);
+  json_object_set_string_member (object, "IV", iv_b64);
+  json_object_set_string_member (object, "hmac", hmac);
+  json_node_set_object (node, object);
+  payload = json_to_string (node, FALSE);
 
+  json_object_unref (object);
+  json_node_unref (node);
   g_free (hmac);
   g_free (iv_b64);
   g_free (ciphertext_b64);
@@ -1034,7 +1076,7 @@ ephy_sync_crypto_compute_hawk_header (const char            *url,
   g_return_val_if_fail (id, NULL);
   g_return_val_if_fail (key, NULL);
 
-  ts = ephy_sync_utils_current_time_seconds ();
+  ts = g_get_real_time () / 1000000;
   hash = options ? g_strdup (options->hash) : NULL;
   payload = options ? options->payload : NULL;
   timestamp = options ? options->timestamp : NULL;
@@ -1096,8 +1138,8 @@ ephy_sync_crypto_compute_hawk_header (const char            *url,
     char *h_ext;
     char *tmp_ext;
 
-    tmp_ext = ephy_sync_utils_find_and_replace (artifacts->ext, "\\", "\\\\");
-    h_ext = ephy_sync_utils_find_and_replace (tmp_ext, "\n", "\\n");
+    tmp_ext = ephy_sync_crypto_find_and_replace (artifacts->ext, "\\", "\\\\");
+    h_ext = ephy_sync_crypto_find_and_replace (tmp_ext, "\n", "\\n");
     header = ephy_sync_crypto_append_to_header (header, "ext", h_ext);
 
     g_free (h_ext);
@@ -1283,21 +1325,17 @@ ephy_sync_crypto_encode_hex (const guint8 *data,
                              gsize         data_len)
 {
   char *retval;
-  gsize length;
 
   g_return_val_if_fail (data, NULL);
 
-  length = data_len == 0 ? EPHY_SYNC_TOKEN_LENGTH : data_len;
-  retval = g_malloc (length * 2 + 1);
-
-  for (gsize i = 0; i < length; i++) {
+  retval = g_malloc (data_len * 2 + 1);
+  for (gsize i = 0; i < data_len; i++) {
     guint8 byte = data[i];
 
     retval[2 * i] = hex_digits[byte >> 4];
     retval[2 * i + 1] = hex_digits[byte & 0xf];
   }
-
-  retval[length * 2] = 0;
+  retval[data_len * 2] = 0;
 
   return retval;
 }
