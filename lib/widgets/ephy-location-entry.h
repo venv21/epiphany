@@ -25,13 +25,15 @@
 
 #include <gtk/gtk.h>
 
+#include "egg/egg-suggestion-entry.h"
+
 #include "ephy-security-levels.h"
 
 G_BEGIN_DECLS
 
 #define EPHY_TYPE_LOCATION_ENTRY (ephy_location_entry_get_type())
 
-G_DECLARE_FINAL_TYPE (EphyLocationEntry, ephy_location_entry, EPHY, LOCATION_ENTRY, GtkEntry)
+G_DECLARE_FINAL_TYPE (EphyLocationEntry, ephy_location_entry, EPHY, LOCATION_ENTRY, EggSuggestionEntry)
 
 typedef enum {
   EPHY_LOCATION_ENTRY_BOOKMARK_ICON_HIDDEN,

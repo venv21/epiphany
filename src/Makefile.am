@@ -62,6 +62,8 @@ libephymain_la_SOURCES = \
 	ephy-session.h				\
 	ephy-shell.c				\
 	ephy-shell.h				\
+	ephy-suggestion-model.c			\
+	ephy-suggestion-model.h			\
 	ephy-window.c				\
 	ephy-window.h				\
 	languages.h				\

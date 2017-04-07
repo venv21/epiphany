@@ -54,7 +54,7 @@
  */
 
 struct _EphyLocationEntry {
-  GtkEntry parent_instance;
+  EggSuggestionEntry parent_instance;
 
   GtkTreeModel *model;
 
@@ -115,7 +115,7 @@ static gint signals[LAST_SIGNAL] = { 0 };
 
 static void ephy_location_entry_title_widget_interface_init (EphyTitleWidgetInterface *iface);
 
-G_DEFINE_TYPE_WITH_CODE (EphyLocationEntry, ephy_location_entry, GTK_TYPE_ENTRY,
+G_DEFINE_TYPE_WITH_CODE (EphyLocationEntry, ephy_location_entry, EGG_TYPE_SUGGESTION_ENTRY,
                          G_IMPLEMENT_INTERFACE (EPHY_TYPE_TITLE_WIDGET,
                                                 ephy_location_entry_title_widget_interface_init))
 

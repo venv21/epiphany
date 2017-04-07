@@ -50,6 +50,7 @@ AC_SUBST([EPIPHANY_CHANGELOG_START],[epiphany_changelog_start])
 AC_PROG_CC
 
 AC_PATH_PROG([GLIB_MKENUMS],[glib-mkenums])
+AC_PATH_PROG([GLIB_COMPILE_RESOURCES], [glib-compile-resources])
 
 dnl Note: I want to enable subdir-objects here, to silence Automake's many
 dnl warnings about not using it. But we can't do this until we require Automake
@@ -62,7 +63,7 @@ dnl it is a bug after all, and updating for bugfixes is just how software works.
 dnl Note also: the issue is that a directory _literally_ named $(top_srcdir)
 dnl will be created under embed/web-extension, and the build will fail due to
 dnl misplaced .Plo files (used for dependency tracking).
-AM_INIT_AUTOMAKE([1.11 foreign dist-xz no-dist-gzip tar-ustar])
+AM_INIT_AUTOMAKE([1.11 foreign dist-xz no-dist-gzip tar-ustar subdir-objects])
 AM_SILENT_RULES([yes])
 AM_MAINTAINER_MODE([enable])
 
