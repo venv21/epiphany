@@ -497,7 +497,7 @@ egg_suggestion_popover_popup (EggSuggestionPopover *self)
 
   g_assert (EGG_IS_SUGGESTION_POPOVER (self));
 
-  if (self->model == NULL || 0 == (n_items = g_list_model_get_n_items (self->model) ))
+  if (self->model == NULL || 0 == (n_items = g_list_model_get_n_items (self->model)))
     return;
 
   if (self->relative_to != NULL)
@@ -519,17 +519,35 @@ egg_suggestion_popover_popup (EggSuggestionPopover *self)
       duration = egg_animation_calculate_duration (monitor, alloc.height, nat_height);
     }
 
-  gtk_revealer_set_transition_duration (self->revealer, duration);
   gtk_widget_show (GTK_WIDGET (self));
+
+  gtk_revealer_set_transition_duration (self->revealer, duration);
   gtk_revealer_set_reveal_child (self->revealer, TRUE);
 }
 
 void
 egg_suggestion_popover_popdown (EggSuggestionPopover *self)
 {
+  GtkAllocation alloc;
+  GdkDisplay *display;
+  GdkMonitor *monitor;
+  GdkWindow *window;
+  guint duration;
+
   g_assert (EGG_IS_SUGGESTION_POPOVER (self));
 
-  gtk_revealer_set_transition_duration (self->revealer, 100);
+  if (!gtk_widget_get_realized (GTK_WIDGET (self)))
+    return;
+
+  display = gtk_widget_get_display (GTK_WIDGET (self->relative_to));
+  window = gtk_widget_get_window (GTK_WIDGET (self->relative_to));
+  monitor = gdk_display_get_monitor_at_window (display, window);
+
+  gtk_widget_get_allocation (GTK_WIDGET (self), &alloc);
+
+  duration = egg_animation_calculate_duration (monitor, alloc.height, 0);
+
+  gtk_revealer_set_transition_duration (self->revealer, duration);
   gtk_revealer_set_reveal_child (self->revealer, FALSE);
 }
 
